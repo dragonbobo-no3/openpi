@@ -530,8 +530,9 @@ class TrainConfig:
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
     #
-    # Inference AgileX configs.
+    # Finetune AgileX configs.
     #
+    #pi0
     TrainConfig(
         name="pi0_agileX",
         # model = pi0_fast.Pi0FASTConfig(
@@ -548,6 +549,36 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m"
         ).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/home/agx/lerobot_model/pi0_base/params"),
+        data=LeRobotAgileXDataConfig(
+            assets=AssetsConfig(assets_dir="/home/agx/jedata/test_0711a"),
+            default_prompt="pick up the circular chip and place it on the yellow pot"
+        ),
+        policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
+        wandb_enabled=False,
+        num_train_steps=100_000,
+        batch_size=8,
+        log_interval=100,
+        save_interval=500,
+        keep_period=20_000,
+        num_workers=4,
+        fsdp_devices=1,
+    ), 
+    #pi0_fast 
+    TrainConfig(
+        name="pi0_fast_agileX",
+        model = pi0_fast.Pi0FASTConfig(
+            paligemma_variant="gemma_2b_lora",
+            action_dim=7,  # 6 joints + 1 gripper actions
+            action_horizon=25,
+            max_token_len=24,
+        ),
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            paligemma_variant="gemma_2b_lora", 
+            action_dim=7,
+            action_horizon=25,
+            max_token_len=24,
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/agx/lerobot_model/pi0_fast_base/params"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/home/agx/jedata/test_0711a"),
             default_prompt="pick up the circular chip and place it on the yellow pot"
