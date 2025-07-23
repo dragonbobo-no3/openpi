@@ -539,11 +539,15 @@ _CONFIGS = [
         #     action_horizon=25,
         #     max_token_len=64,
         # ),
-        model=pi0.Pi0Config(paligemma_variant="gemma_300m_lora", 
-                            action_expert_variant="gemma_300m_lora",
+        model=pi0.Pi0Config(paligemma_variant="gemma_2b_lora", 
+                            action_expert_variant="gemma_300m",
                             action_dim=7,
                             action_horizon=25,
-                            max_token_len=64),
+                            max_token_len=20),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m"
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/agx/lerobot_model/pi0_base/params"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/home/agx/jedata/test_0711a"),
             default_prompt="pick up the circular chip and place it on the yellow pot"
@@ -551,9 +555,9 @@ _CONFIGS = [
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
         num_train_steps=100_000,
-        batch_size=1,
+        batch_size=8,
         log_interval=100,
-        save_interval=5000,
+        save_interval=500,
         keep_period=20_000,
         num_workers=4,
         fsdp_devices=1,
