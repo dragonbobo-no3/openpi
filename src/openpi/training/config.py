@@ -17,6 +17,7 @@ import openpi.models.model as _model
 import openpi.models.pi0 as pi0
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.tokenizer as _tokenizer
+import openpi.policies.agileX_policy as agileX_policy
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
@@ -92,6 +93,8 @@ class DataConfig:
     rlds_data_dir: str | None = None
     # Action space for DROID dataset.
     action_space: droid_rlds_dataset.DroidActionSpace | None = None
+    # Directory of the local dataset.
+    root: str | pathlib.Path | None = None
 
 
 class GroupFactory(Protocol):
@@ -152,7 +155,7 @@ class DataConfigFactory(abc.ABC):
 
     def create_base_config(self, assets_dirs: pathlib.Path) -> DataConfig:
         repo_id = self.repo_id if self.repo_id is not tyro.MISSING else None
-        asset_id = self.assets.asset_id or repo_id
+        asset_id = "lerobot/test"#self.assets.asset_id or repo_id
         return dataclasses.replace(
             self.base_config or DataConfig(),
             repo_id=repo_id,
@@ -249,6 +252,61 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
             data_transforms=data_transforms,
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
+        )
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotAgileXDataConfig(DataConfigFactory):
+    # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
+    # Gripper dimensions will remain in absolute values.
+    use_delta_joint_actions: bool = True
+    # If provided, will be injected into the input data if the "prompt" key is not present.
+    default_prompt: str | None = None
+    # If true, this will convert the joint and gripper values from the standard Aloha space to
+    # the space used by the pi internal runtime which was used to train the base model. People who
+    # use standard Aloha data should set this to true.
+    adapt_to_pi: bool = True
+
+    # Repack transforms.
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
+        default=_transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "images": {"camera0": "observation.images.camera0",
+                                   "camera1": "observation.images.camera1",
+                                   "camera2": "observation.images.camera2"},
+                        "state": "observation.state",
+                        "actions": "action",
+                    }
+                )
+            ]
+        )
+    )
+    # Action keys that will be used to read the action sequence from the dataset.
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        data_transforms = _transforms.Group(
+            inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi)],
+            outputs=[agileX_policy.AgileXOutputs(adapt_to_pi=self.adapt_to_pi)],
+        )
+        if self.use_delta_joint_actions:
+            delta_action_mask = _transforms.make_bool_mask(6, -1)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+
+        model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs),
+            repack_transforms=self.repack_transforms,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+            repo_id="lerobot/test"
         )
 
 
@@ -399,6 +457,7 @@ class TrainConfig:
 
     lr_schedule: _optimizer.LRScheduleConfig = dataclasses.field(default_factory=_optimizer.CosineDecaySchedule)
     optimizer: _optimizer.OptimizerConfig = dataclasses.field(default_factory=_optimizer.AdamW)
+    # optimizer: _optimizer.OptimizerConfig = dataclasses.field(default_factory=_optimizer.SGD)
     ema_decay: float | None = 0.99
 
     # Specifies which weights should be frozen.
@@ -408,7 +467,7 @@ class TrainConfig:
     data: DataConfigFactory = dataclasses.field(default_factory=FakeDataConfig)
 
     # Base directory for config assets (e.g., norm stats).
-    assets_base_dir: str = "./assets"
+    assets_base_dir: str = ""#"./assets"
     # Base directory for checkpoints.
     checkpoint_base_dir: str = "./checkpoints"
 
@@ -470,6 +529,70 @@ class TrainConfig:
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
+    #
+    # Finetune AgileX configs.
+    #
+    #pi0
+    TrainConfig(
+        name="pi0_agileX",
+        # model = pi0_fast.Pi0FASTConfig(
+        #     action_dim=7,  # 6 joints + 1 gripper actions
+        #     action_horizon=25,
+        #     max_token_len=64,
+        # ),
+        model=pi0.Pi0Config(paligemma_variant="gemma_2b_lora", 
+                            action_expert_variant="gemma_300m",
+                            action_dim=7,
+                            action_horizon=25,
+                            max_token_len=20),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m"
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/agx/lerobot_model/pi0_base/params"),
+        data=LeRobotAgileXDataConfig(
+            assets=AssetsConfig(assets_dir="/home/agx/jedata/test_0711a"),
+            default_prompt="pick up the circular chip and place it on the yellow pot"
+        ),
+        policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
+        wandb_enabled=False,
+        num_train_steps=100_000,
+        batch_size=8,
+        log_interval=100,
+        save_interval=500,
+        keep_period=20_000,
+        num_workers=4,
+        fsdp_devices=1,
+    ), 
+    #pi0_fast 
+    TrainConfig(
+        name="pi0_fast_agileX",
+        model = pi0_fast.Pi0FASTConfig(
+            paligemma_variant="gemma_2b_lora",
+            action_dim=7,  # 6 joints + 1 gripper actions
+            action_horizon=25,
+            max_token_len=24,
+        ),
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            paligemma_variant="gemma_2b_lora", 
+            action_dim=7,
+            action_horizon=25,
+            max_token_len=24,
+        ).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/agx/lerobot_model/pi0_fast_base/params"),
+        data=LeRobotAgileXDataConfig(
+            assets=AssetsConfig(assets_dir="/home/agx/jedata/test_0711a"),
+            default_prompt="pick up the circular chip and place it on the yellow pot"
+        ),
+        policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
+        wandb_enabled=False,
+        num_train_steps=100_000,
+        batch_size=8,
+        log_interval=100,
+        save_interval=500,
+        keep_period=20_000,
+        num_workers=4,
+        fsdp_devices=1,
+    ),    
     #
     # Inference Aloha configs.
     #

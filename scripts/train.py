@@ -91,7 +91,7 @@ def init_train_state(
         rng, model_rng = jax.random.split(rng)
         # initialize the model (and its parameters).
         model = config.model.create(model_rng)
-
+        logging.info(f"Initialized model:\n{model}")
         # Merge the partial params into the model.
         if partial_params is not None:
             graphdef, state = nnx.split(model)
@@ -102,7 +102,12 @@ def init_train_state(
         params = nnx.state(model)
         # Convert frozen params to bfloat16.
         params = nnx_utils.state_map(params, config.freeze_filter, lambda p: p.replace(p.value.astype(jnp.bfloat16)))
-
+       
+        # Log the model structure and total number of parameters.
+        # def count_params(tree):
+        #     return sum(x.size for x in jax.tree_util.tree_leaves(tree) if hasattr(x, "size"))
+        # print("model params structure:", jax.tree_util.tree_map(lambda x: getattr(x, "shape", None), params))
+        # print("model params total size:", count_params(params))
         return training_utils.TrainState(
             step=0,
             params=params,
@@ -112,7 +117,17 @@ def init_train_state(
             ema_decay=config.ema_decay,
             ema_params=None if config.ema_decay is None else params,
         )
-
+    
+    # # print real train state structure and dtypes.
+    # real_train_state = init(init_rng, None)
+    # for leaf in jax.tree_util.tree_leaves(real_train_state.params):
+    #     if hasattr(leaf, "value"):
+    #         print("Param dtype:", getattr(leaf.value, "dtype", None))
+    #     elif hasattr(leaf, "dtype"):
+    #         print("Param dtype:", leaf.dtype)
+    #     else:
+    #         print("No dtype info:", type(leaf))
+    
     train_state_shape = jax.eval_shape(init, init_rng)
     state_sharding = sharding.fsdp_sharding(train_state_shape, mesh, log=True)
 
@@ -121,6 +136,12 @@ def init_train_state(
 
     partial_params = _load_weights_and_validate(config.weight_loader, train_state_shape.params.to_pure_dict())
     replicated_sharding = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec())
+
+    # Uncomment the following lines to enable JAX XLA flags for debugging or performance tuning.
+    # os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+    # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".90"
+    # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
+    # os.environ["JAX_TRACEBACK_FILTERING"]="on"
 
     # Initialize the train state and mix in the partial params.
     train_state = jax.jit(
@@ -194,6 +215,8 @@ def train_step(
 def main(config: _config.TrainConfig):
     init_logging()
     logging.info(f"Running on: {platform.node()}")
+    logging.info(f"devices:{jax.devices()}")
+    logging.info(f"Defalut device: {jax.default_backend()}")
 
     if config.batch_size % jax.device_count() != 0:
         raise ValueError(
@@ -221,6 +244,7 @@ def main(config: _config.TrainConfig):
         config,
         sharding=data_sharding,
         shuffle=True,
+        # skip_norm_stats=True,  # Skip normalization stats for faster training.
     )
     data_iter = iter(data_loader)
     batch = next(data_iter)
@@ -233,7 +257,9 @@ def main(config: _config.TrainConfig):
     ]
     wandb.log({"camera_views": images_to_log}, step=0)
 
+    # logging.info(f"Start training with config:\n{dataclasses.asdict(config)}")
     train_state, train_state_sharding = init_train_state(config, init_rng, mesh, resume=resuming)
+    logging.info(f"Blocking until train state is ready on all devices.")
     jax.block_until_ready(train_state)
     logging.info(f"Initialized train state:\n{training_utils.array_tree_to_info(train_state.params)}")
 
@@ -256,6 +282,7 @@ def main(config: _config.TrainConfig):
     )
 
     infos = []
+    logging.info(f"Starting training for {config.num_train_steps} steps.")
     for step in pbar:
         with sharding.set_mesh(mesh):
             train_state, info = ptrain_step(train_rng, train_state, batch)
