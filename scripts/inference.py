@@ -7,13 +7,15 @@ import draccus
 import logging
 import multiprocessing as mp
 import collections
+import yaml
 
 
 from openpi.policies import policy_config as _policy_config
 from openpi.models.tokenizer import PaligemmaTokenizer
 from openpi.training import config as _config
-from ..third_party.agilex.agilexfollower import AlohaAgileXFollower
-from ..third_party.agilex.agilexconfig import AlohaAgileXFollowerConfig
+from third_party.agilex.agilexfollower import AlohaAgileXFollower
+from third_party.agilex.agilexconfig import AlohaAgileXFollowerConfig
+from third_party.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 
 # ---------- 子进程：推理循环 ----------
 def inference_worker(
@@ -32,7 +34,10 @@ def inference_worker(
             del policy
             break
         idx, obs = item       # idx 用来对应主进程里的顺序
+        start_time = time.time()
         result = policy.infer(obs)
+        infer_time = time.time() - start_time
+        print(f"Step {idx}: infer time = {infer_time:.4f} seconds")
         out_q.put((idx, result["actions"]))
 
 def main():
@@ -49,9 +54,11 @@ def main():
 
     # 解析摄像头配置
     if args.cameras is not None:
-        cameras = draccus.load(args.cameras)
+        raw = yaml.safe_load(args.cameras)
+        cameras = {name: OpenCVCameraConfig(index_or_path=cfg['index_or_path'], width=640, height=480, fps=30) for name, cfg in raw.items()} 
     else:
         cameras = {}
+
 
     robot_config = AlohaAgileXFollowerConfig(
         port=args.port,
@@ -100,6 +107,7 @@ def main():
 
         # 如果当前动作队列有动作，取下一个动作发给 robot
         if action_queue:
+            print('yes')
             action_to_send = action_queue.popleft()
             robot.send_action_np(action_to_send[:7])
             waiting_for_infer = False  # 只要能发动作就不是等待状态
@@ -126,9 +134,10 @@ def main():
                 idx, action_vals = out_q.get_nowait()
                 recv_idx = idx
                 logging.debug(f"got result #{recv_idx}")
+                idx_len = len(action_vals)
                 # 将新动作序列加入队列
-                for a in action_vals:
-                    action_queue.append(a)
+                for i in range(idx_len):
+                    action_queue.append(action_vals[i])
                 waiting_for_infer = False
             except mp.queues.Empty:
                 # 还没推理好，什么都不做（不发动作）
@@ -137,8 +146,9 @@ def main():
         # 2.5 统计
         i += 1
         dt_s = time.perf_counter() - t0
+        print(f"loop {i} dt={dt_s:.3f} s")
         time.sleep(max(step_time - dt_s,0))
-        # logging.info(f"loop {i} dt={t1-t0:.3f} s")
+        
 
     # ==== 3. 结束 ====
     in_q.put(None)      # 通知子进程退出

@@ -45,6 +45,7 @@ class AlohaAgileXFollower():
         self.is_enabled_ = False
         self.is_robot_connected_ = False
         self.is_piper_port_connected_ = False
+        self.id = self.config.id
 
     @property
     def _motors_ft(self) -> dict[str, type]:
@@ -124,7 +125,10 @@ class AlohaAgileXFollower():
 
         # Capture images from cameras
         for cam_key, cam in self.cameras.items():
-            obs_dict["images"][cam_key] = cam.async_read()
+            img = cam.async_read()        # (480, 640, 3)
+            # 把轴顺序从 (H, W, C) 改为 (C, H, W)
+            img_chw = np.transpose(img, (2, 0, 1))   # 结果形状 (3, 480, 640)
+            obs_dict["images"][cam_key] = img_chw
 
         obs_dict["image_masks"] = {
             cam_key: np.array([True]) for cam_key in self.cameras.keys()

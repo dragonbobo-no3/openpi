@@ -18,6 +18,7 @@ class RobotConfig(draccus.ChoiceRegistry, abc.ABC):
     def __post_init__(self):
         if hasattr(self, "cameras") and self.cameras:
             for _, config in self.cameras.items():
+                print(config)
                 for attr in ["width", "height", "fps"]:
                     if getattr(config, attr) is None:
                         raise ValueError(
@@ -32,7 +33,7 @@ class RobotConfig(draccus.ChoiceRegistry, abc.ABC):
 @dataclass
 class AlohaAgileXFollowerConfig(RobotConfig):
     # Port to connect to the arm
-    port: str
+    port: str | None = "can_left"
 
     disable_torque_on_disconnect: bool = True
 
