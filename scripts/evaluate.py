@@ -12,10 +12,10 @@ from openpi.models.tokenizer import PaligemmaTokenizer
 def main():
     # 选择配置和 checkpoint
     config = _config.get_config("pi0_agileX")
-    checkpoint_dir = "/home/agx/jemodel/test/86500"
+    checkpoint_dir = "/home/agx/jemodel/pi0_collect/60000"
     default_prompt="pick up the circular chip and place it on the yellow pot"
     id = 92
-    period = 25
+    period = 50
 
     # 直接用 LeRobotDataset 读取 episode
     repo_id = "lerobot/test"
