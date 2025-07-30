@@ -44,8 +44,8 @@ def linear_transition(old_actions, new_actions):
     """
     线性插值平滑衔接，返回平滑后的动作序列。
     old_actions: list[np.ndarray]，未执行的旧动作
-    new_actions: np.ndarray，shape=(N, action_dim)，新推理动作
-    返回：list[np.ndarray]，平滑衔接后的动作序列
+    new_actions: np.ndarray:shape=(N, action_dim)，新推理动作
+    返回:list[np.ndarray]，平滑衔接后的动作序列
     """
     n_old = len(old_actions)
     n_interp = min(n_old, len(new_actions))
@@ -62,8 +62,8 @@ def cubic_transition(old_actions, new_actions):
     """
     三次插值平滑衔接，返回平滑后的动作序列。
     old_actions: list[np.ndarray]，未执行的旧动作
-    new_actions: np.ndarray，shape=(N, action_dim)，新推理动作
-    返回：list[np.ndarray]，平滑衔接后的动作序列
+    new_actions: np.ndarrayshape=(N, action_dim)，新推理动作
+    返回:list[np.ndarray]，平滑衔接后的动作序列
     """
     n_old = len(old_actions)
     n_interp = min(n_old, len(new_actions))
@@ -82,8 +82,8 @@ def quintic_transition(old_actions, new_actions):
     """
     五次多项式插值平滑衔接，返回平滑后的动作序列。
     old_actions: list[np.ndarray]，未执行的旧动作
-    new_actions: np.ndarray，shape=(N, action_dim)，新推理动作
-    返回：list[np.ndarray]，平滑衔接后的动作序列
+    new_actions: np.ndarray,shape=(N, action_dim)，新推理动作
+    返回:list[np.ndarray]，平滑衔接后的动作序列
     """
     n_old = len(old_actions)
     n_interp = min(n_old, len(new_actions))
@@ -100,11 +100,11 @@ def quintic_transition(old_actions, new_actions):
 
 def ema_transition(old_actions, new_actions, alpha=0.7):
     """
-    指数加权平滑（EMA），返回平滑后的动作序列。
+    指数加权平滑(EMA)，返回平滑后的动作序列。
     old_actions: list[np.ndarray]，未执行的旧动作
-    new_actions: np.ndarray，shape=(N, action_dim)，新推理动作
-    alpha: 新动作权重，0~1
-    返回：list[np.ndarray]，平滑衔接后的动作序列
+    new_actions: np.ndarray,shape=(N, action_dim)，新推理动作
+    alpha: 新动作权重,0~1
+    返回:list[np.ndarray]，平滑衔接后的动作序列
     """
     n_old = len(old_actions)
     n_interp = min(n_old, len(new_actions))
@@ -128,7 +128,8 @@ def main():
     parser.add_argument("--use_degrees", action="store_true")
     parser.add_argument("--action_steps", type=int, required=False, default=20, help="number of action steps to execute before next inference")
     parser.add_argument("--smooth_type", type=str, default="cubic", choices=["linear", "cubic", "quintic", "ema"], help="动作平滑策略: linear/cubic/quintic/ema")
-    parser.add_argument("--ema_alpha", type=float, default=0.7, help="EMA平滑时新动作权重alpha，0~1")
+    parser.add_argument("--ema_alpha", type=float, default=0.7, help="EMA平滑时新动作权重alpha,0~1")
+    parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
     args = parser.parse_args()
 
     # 解析摄像头配置
@@ -211,8 +212,17 @@ def main():
             old_actions = list(action_queue)
             action_queue.clear()
 
+
             # 2. 新推理动作起点
-            start_idx = action_step_counter
+            if args.align_mode == "step":
+                start_idx = action_step_counter
+            elif args.align_mode == "euclidean" and len(old_actions) > 0 and len(action_vals) > 0:
+                # 取旧队列第一个动作，与新动作序列做欧氏距离最小匹配
+                old_action = old_actions[0]
+                dists = np.linalg.norm(action_vals - old_action, axis=1)
+                start_idx = int(np.argmin(dists))
+            else:
+                start_idx = 0
             new_actions = action_vals[start_idx:]
 
             # 3. 平滑衔接（可通过参数切换）
