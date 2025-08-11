@@ -39,7 +39,7 @@ class AgileXInputs(transforms.DataTransformFn):
 
     # The expected cameras names. All input cameras must be in this set. Missing cameras will be
     # replaced with black images and the corresponding `image_mask` will be set to False.
-    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2", "camera3")
+    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2")
 
     def __call__(self, data: dict) -> dict:
         data = _decode_aloha(data, adapt_to_pi=self.adapt_to_pi)
@@ -52,25 +52,21 @@ class AgileXInputs(transforms.DataTransformFn):
             raise ValueError(f"Expected images to contain {self.EXPECTED_CAMERAS}, got {tuple(in_images)}")
 
         # Assume that base image always exists.
-        top_image = in_images["camera0"]
-        right_wrist_image = in_images["camera1"]
-        right_pole_image = in_images["camera2"]
-        base_image = in_images["camera3"]
+        base_image = in_images["camera0"]
+        left_image = in_images["camera1"]
 
         images = {
-            "top_rgb": top_image,
-            "right_wrist_rgb": right_wrist_image,
-            "right_pole_rgb": right_pole_image,
+            "base_0_rgb": base_image,
+            "left_wrist_0_rgb": left_image,
         }
         image_masks = {
-"           ""top_rgb": np.True_,
-            "right_wrist_rgb": np.True_,
-            "right_pole_rgb": np.True_,
+            "base_0_rgb": np.True_,
+            "left_wrist_0_rgb": np.True_,
         }
 
         # Add the extra images.
         extra_image_names = {
-            "base_rgb": "camera3",
+            "right_wrist_0_rgb": "camera2",
         }
         for dest, source in extra_image_names.items():
             if source in in_images:

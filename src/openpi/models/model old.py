@@ -32,10 +32,9 @@ class ModelType(enum.Enum):
 
 # The model always expects these images
 IMAGE_KEYS = (
-    "top_rgb",
-    "right_wrist_rgb",
-    "right_pole_rgb",
-    "base_rgb",
+    "base_0_rgb",
+    "left_wrist_0_rgb",
+    "right_wrist_0_rgb",
 )
 
 
@@ -49,7 +48,7 @@ IMAGE_RESOLUTION = (224, 224)
 # into `Obesrvation` and `Actions` objects. See below.
 #
 # In the dictory form, this data should look like:
-# {0
+# {
 #     # Observation data.
 #     "image": {
 #         "base_0_rgb": (float32|uint8)[*b, h, w, 3],  # RGB image in [-1, 1] or [0, 255]
