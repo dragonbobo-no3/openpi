@@ -155,7 +155,7 @@ class DataConfigFactory(abc.ABC):
 
     def create_base_config(self, assets_dirs: pathlib.Path) -> DataConfig:
         repo_id = self.repo_id if self.repo_id is not tyro.MISSING else None
-        asset_id = "lerobot/test"#self.assets.asset_id or repo_id
+        asset_id = "openpi_stats/"#self.assets.asset_id or repo_id
         return dataclasses.replace(
             self.base_config or DataConfig(),
             repo_id=repo_id,
@@ -550,20 +550,26 @@ _CONFIGS = [
                             action_dim=7,
                             action_horizon=50,
                             max_token_len=48).get_freeze_filter(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("/home/agx/lerobot_model/pi0_base/params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi0_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/home/agx/jedata/test_0711a"),
-            default_prompt="pick up the circular chip and place it on the yellow pot"
+            assets=AssetsConfig(assets_dir="/jedata/test_0807a_modified/"),
+            default_prompt="Pick up the PCB board on the round yellow base and place it into the circular recess of the yellow square container"
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
-        num_train_steps=400_000,
-        batch_size=16,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=3_000,
+            decay_lr=1e-5,
+        ),
+        num_train_steps=15_000,
+        batch_size=512,
         log_interval=100,
-        save_interval=5000,
-        keep_period=20_000,
+        save_interval=5_000,
+        keep_period=5_000,
         num_workers=4,
-        fsdp_devices=1,
+        fsdp_devices=8,
     ), 
     #pi0_fast 
     TrainConfig(
@@ -588,12 +594,12 @@ _CONFIGS = [
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
         num_train_steps=400_000,
-        batch_size=16,
+        batch_size=512,
         log_interval=100,
         save_interval=5000,
         keep_period=20_000,
         num_workers=4,
-        fsdp_devices=1,
+        fsdp_devices=8,
     ),    
     #
     # Inference Aloha configs.
