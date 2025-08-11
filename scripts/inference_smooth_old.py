@@ -105,16 +105,10 @@ def main():
     while i < kMaxTimeStamps:
         t0 = time.perf_counter()
 
-        if action_queue:
-            print(f'publish an action:{time.perf_counter()}')
-            action_to_send = action_queue.popleft()
-            robot.send_action_np(action_to_send[:7])
-            waiting_for_infer = False  # 只要能发动作就不是等待状态
-
-        # 如果动作队列空了，且不在等待推理，则采集观测并发给子进程
-        elif not waiting_for_infer:
+        # 1. 每步都采集观测并尝试发给子进程（只要不在等待推理结果）
+        if not waiting_for_infer:
             obs = robot.get_observation()
-            obs["state"] = obs["state"]
+            obs["state"] = obs["state"]   
             obs["tokenized_prompt"] = tokenized[None]
             obs["tokenized_prompt_mask"] = mask[None]
             obs["token_ar_mask"] = None
@@ -125,25 +119,40 @@ def main():
                 waiting_for_infer = True
             except mp.queues.Full:
                 logging.debug("inference queue full, dropping frame")
-                # 可以选择阻塞 in_q.put((sent_idx, obs))
 
-        # 如果在等待推理结果，尝试获取新动作序列
-        elif waiting_for_infer:
-            try:
-                idx, action_vals = out_q.get_nowait()
-                recv_idx = idx
-                logging.debug(f"got result #{recv_idx}")
-                idx_len = len(action_vals)
-                # 将新动作序列加入队列
-                for j in range(idx_len):
-                    action_queue.append(action_vals[j])
-                action_to_send = action_queue.popleft()
-                robot.send_action_np(action_to_send[:7])
-                print(f'publish an action:{time.perf_counter()}')
-                waiting_for_infer = False
-            except mp.queues.Empty:
-                # 还没推理好，什么都不做（不发动作）
-                pass
+        # 2. 如果有新推理结果，立即清空并更新 action_queue
+        try:
+            idx, action_vals = out_q.get_nowait()
+            recv_idx = idx
+            logging.debug(f"got result #{recv_idx}")
+            action_queue.clear()
+
+            # 当前观测状态
+            current_state = obs["state"]  # shape: (14,) 或 (7,)
+
+            # 用动作的前7维近似匹配（假设 action_vals shape: (N, 7) 或 (N, action_dim)）
+            # 如果 action_vals 不是7维，需调整
+            compare_dim = min(current_state.shape[-1], action_vals.shape[-1]) - 1
+            print(f"compare_dim:{compare_dim}")
+            dists = np.linalg.norm(action_vals[:, :compare_dim] - current_state[:compare_dim], axis=1)
+            print(f"dists:{dists}")
+            start_idx = np.argmin(dists)
+            print(f"start_idx:{start_idx}")
+
+            # 只加入从最近点开始的动作
+            for a in action_vals[start_idx:]:
+                action_queue.append(a)
+
+            waiting_for_infer = False
+        except mp.queues.Empty:
+            pass
+
+        # 3. 如果 action_queue 有动作，发给 robot
+        if action_queue:
+            action_to_send = action_queue.popleft()
+            robot.send_action_np(action_to_send[:7])
+            print(f'publish an action:{time.perf_counter()}')
+
 
         # 2.5 统计
         i += 1
