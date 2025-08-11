@@ -143,6 +143,10 @@ def init_train_state(
     # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
     # os.environ["JAX_TRACEBACK_FILTERING"]="on"
 
+    # print("local_device_count:", jax.local_device_count())
+    # print("process_count:", jax.process_count())
+    # print("device_count:", jax.device_count())  # 全局设备数（多机时 = local * process）
+    # exit(1)
     # Initialize the train state and mix in the partial params.
     train_state = jax.jit(
         init,
@@ -263,6 +267,17 @@ def main(config: _config.TrainConfig):
     jax.block_until_ready(train_state)
     logging.info(f"Initialized train state:\n{training_utils.array_tree_to_info(train_state.params)}")
 
+    # 打印可训练参数数量和参数名
+    trainable_params = train_state.params.filter(config.trainable_filter)
+    flat_params = traverse_util.flatten_dict(trainable_params.to_pure_dict())
+    total_count = 0
+    for k, v in traverse_util.flatten_dict(trainable_params.to_pure_dict()).items():
+        shape = getattr(v, "shape", None)
+        count = np.prod(shape) if shape is not None else 0
+        print(f"{k}: shape={shape}, count={count}")
+        total_count += count
+    print(f"Trainable param count:{total_count}")
+    
     if resuming:
         train_state = _checkpoints.restore_state(checkpoint_manager, train_state, data_loader)
 
