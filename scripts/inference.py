@@ -8,6 +8,7 @@ import logging
 import multiprocessing as mp
 import collections
 import yaml
+from scripts.numpy_logger import NumpyCSVLogger
 
 
 from openpi.policies import policy_config as _policy_config
@@ -51,6 +52,8 @@ def main():
     parser.add_argument("--max_relative_target", type=int, required=False, default=None)
     parser.add_argument("--use_degrees", action="store_true")
     args = parser.parse_args()
+
+    logger = NumpyCSVLogger("logs/2.csv", mode="w")
 
     # 解析摄像头配置
     if args.cameras is not None:
@@ -109,6 +112,7 @@ def main():
             print(f'publish an action:{time.perf_counter()}')
             action_to_send = action_queue.popleft()
             robot.send_action_np(action_to_send[:7])
+            # logger.log(action_to_send[:7])
             waiting_for_infer = False  # 只要能发动作就不是等待状态
 
         # 如果动作队列空了，且不在等待推理，则采集观测并发给子进程
@@ -139,7 +143,8 @@ def main():
                     action_queue.append(action_vals[j])
                 action_to_send = action_queue.popleft()
                 robot.send_action_np(action_to_send[:7])
-                print(f'publish an action:{time.perf_counter()}')
+                # logger.log(action_to_send[:7])
+                # print(f'publish an action:{time.perf_counter()}')
                 waiting_for_infer = False
             except mp.queues.Empty:
                 # 还没推理好，什么都不做（不发动作）
@@ -148,7 +153,7 @@ def main():
         # 2.5 统计
         i += 1
         dt_s = time.perf_counter() - t0
-        print(f"loop {i} dt={dt_s:.3f} s")
+        # print(f"loop {i} dt={dt_s:.3f} s")
         time.sleep(max(step_time - dt_s,0))
         
 
