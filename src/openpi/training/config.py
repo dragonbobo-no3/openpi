@@ -255,7 +255,7 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
         )
 
 @dataclasses.dataclass(frozen=True)
-class LeRobotAgileXDataConfig(DataConfigFactory):
+class LeRobotAgileXDataConfigOld(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
     # Gripper dimensions will remain in absolute values.
     use_delta_joint_actions: bool = True
@@ -275,6 +275,38 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
                         "images": {"camera0": "observation.images.camera0",
                                    "camera1": "observation.images.camera1",
                                    "camera2": "observation.images.camera2"},
+                        "state": "observation.state",
+                        "actions": "action",
+                    }
+                )
+            ]
+        )
+    )
+    # Action keys that will be used to read the action sequence from the dataset.
+    action_sequence_keys: Sequence[str] = ("action",)
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotAgileXDataConfig(DataConfigFactory):
+    # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
+    # Gripper dimensions will remain in absolute values.
+    use_delta_joint_actions: bool = True
+    # If provided, will be injected into the input data if the "prompt" key is not present.
+    default_prompt: str | None = None
+    # If true, this will convert the joint and gripper values from the standard Aloha space to
+    # the space used by the pi internal runtime which was used to train the base model. People who
+    # use standard Aloha data should set this to true.
+    adapt_to_pi: bool = True
+
+    # Repack transforms.
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
+        default=_transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "images": {"camera0": "observation.images.camera0",
+                                   "camera1": "observation.images.camera1",
+                                   "camera2": "observation.images.camera2",
+                                   "camera3": "observation.images.camera3"},
                         "state": "observation.state",
                         "actions": "action",
                     }
@@ -550,7 +582,7 @@ _CONFIGS = [
                             action_dim=7,
                             action_horizon=50,
                             max_token_len=48).get_freeze_filter(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi0_base/params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/kleist/Documents/Model/openpi_model/pi0_base/pi0_base"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/jedata/test_0807a_modified/"),
             default_prompt="Pick up the PCB board on the round yellow base and place it into the circular recess of the yellow square container"

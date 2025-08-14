@@ -136,7 +136,7 @@ def create_torch_dataset(
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
     if not data_config.root:
-        root="/home/kleist/Documents/Database/test_0807a_modified"
+        root="/jedata/test_0807a_modified/"
     dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id=repo_id, root=root)
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
