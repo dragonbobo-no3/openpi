@@ -31,13 +31,18 @@ class ModelType(enum.Enum):
 
 
 # The model always expects these images
-IMAGE_KEYS = (
-    "top_rgb",
-    "right_wrist_rgb",
-    "right_pole_rgb",
-    "base_rgb",
-)
+# IMAGE_KEYS = (
+#     "top_rgb",
+#     "right_wrist_rgb",
+#     "right_pole_rgb",
+#     "base_rgb",
+# )
 
+# 开始
+IMAGE_KEYS = (
+    "base_rgb",
+    "right_wrist_rgb",
+)
 
 # This may need change if we release a small model.
 IMAGE_RESOLUTION = (224, 224)
