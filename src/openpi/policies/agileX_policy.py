@@ -75,12 +75,12 @@ class AgileXInputs(transforms.DataTransformFn):
 
         # 从这开始
         images = {
-            "base_rgb": base_image,
             "right_wrist_rgb": right_wrist_image,
+            "base_rgb": base_image,
         }
         image_masks = {
-            "base_rgb": np.True_,
             "right_wrist_rgb": np.True_,
+            "base_rgb": np.True_,
         }
 
         # Add the extra images.
