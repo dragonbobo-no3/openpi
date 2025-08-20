@@ -132,7 +132,8 @@ def main():
     parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
     args = parser.parse_args()
 
-    logger = NumpyCSVLogger("logs/1.csv", mode="w")
+    logger = NumpyCSVLogger("logs/1a.csv", mode="w")
+    print_log = True
 
     # 解析摄像头配置
     if args.cameras is not None:
@@ -250,7 +251,8 @@ def main():
         # 3. 如果 action_queue 有动作，发给 robot
         if action_queue:
             action_to_send = action_queue.popleft()
-            # logger.log(action_to_send[:7])
+            if print_log:
+                logger.log(action_to_send[:7])
             robot.send_action_np(action_to_send[:7])
             action_step_counter += 1
             # print(f'publish an action:{time.perf_counter()},action counter:{action_step_counter}')

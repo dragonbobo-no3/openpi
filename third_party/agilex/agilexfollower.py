@@ -136,6 +136,24 @@ class AlohaAgileXFollower():
 
         return obs_dict
 
+    def get_joint_state(self) -> dict[str, Any]:
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected.")
+
+        if not self.is_piper_port_connected_:
+            self.piper.ConnectPort()
+            self.is_piper_port_connected_ = True
+
+        # Read arm position
+        obs_dict = {
+            "state": np.ones((7,)),
+        }
+        for i in range(6):
+            obs_dict["state"][i] = getattr(self.piper.GetArmJointMsgs().joint_state, f"joint_{i + 1}")
+        obs_dict["state"][6] = self.piper.GetArmGripperMsgs().gripper_state.grippers_angle
+
+        return obs_dict
+
     def get_leader_action(self) -> dict[str, Any]:
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")

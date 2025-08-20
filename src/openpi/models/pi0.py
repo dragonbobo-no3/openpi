@@ -91,17 +91,26 @@ class Pi0Config(_model.BaseModelConfig):
 
         with at.disable_typechecking():
             observation_spec = _model.Observation(
+                # images={
+                #     "top_rgb": image_spec,
+                #     "right_wrist_rgb": image_spec,
+                #     "right_pole_rgb": image_spec,
+                #     "base_rgb": image_spec,
+                # },
+                # image_masks={
+                #     "top_rgb": image_mask_spec,
+                #     "right_wrist_rgb": image_mask_spec,
+                #     "right_pole_rgb": image_mask_spec,
+                #     "base_rgb": image_mask_spec,
+                # },
+                # 开始
                 images={
-                    "top_rgb": image_spec,
-                    "right_wrist_rgb": image_spec,
-                    "right_pole_rgb": image_spec,
                     "base_rgb": image_spec,
+                    "right_wrist_rgb": image_spec,
                 },
                 image_masks={
-                    "top_rgb": image_mask_spec,
-                    "right_wrist_rgb": image_mask_spec,
-                    "right_pole_rgb": image_mask_spec,
                     "base_rgb": image_mask_spec,
+                    "right_wrist_rgb": image_mask_spec,
                 },
                 state=jax.ShapeDtypeStruct([batch_size, self.action_dim], jnp.float32),
                 tokenized_prompt=jax.ShapeDtypeStruct([batch_size, self.max_token_len], jnp.int32),

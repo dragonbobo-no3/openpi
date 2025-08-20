@@ -57,21 +57,37 @@ class AgileXInputs(transforms.DataTransformFn):
         right_pole_image = in_images["camera2"]
         base_image = in_images["camera3"]
 
+#         images = {
+#             "top_rgb": top_image,
+#             "right_wrist_rgb": right_wrist_image,
+#             "right_pole_rgb": right_pole_image,
+#         }
+#         image_masks = {
+# "           ""top_rgb": np.True_,
+#             "right_wrist_rgb": np.True_,
+#             "right_pole_rgb": np.True_,
+#         }
+#
+#         # Add the extra images.
+#         extra_image_names = {
+#             "base_rgb": "camera3",
+#         }
+
+        # 从这开始
         images = {
-            "top_rgb": top_image,
+            "base_rgb": base_image,
             "right_wrist_rgb": right_wrist_image,
-            "right_pole_rgb": right_pole_image,
         }
         image_masks = {
-"           ""top_rgb": np.True_,
+            "base_rgb": np.True_,
             "right_wrist_rgb": np.True_,
-            "right_pole_rgb": np.True_,
         }
 
         # Add the extra images.
         extra_image_names = {
-            "base_rgb": "camera3",
         }
+        # 到这结束
+
         for dest, source in extra_image_names.items():
             if source in in_images:
                 images[dest] = in_images[source]
