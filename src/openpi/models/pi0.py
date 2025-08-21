@@ -11,8 +11,10 @@ from typing_extensions import override
 from openpi.models import model as _model
 import openpi.models.gemma as _gemma
 import openpi.models.siglip as _siglip
+from openpi.serving.real_time_chunk import get_soft_guidance_mask
 from openpi.shared import array_typing as at
 import openpi.shared.nnx_utils as nnx_utils
+from jax import debug as jdebug
 
 logger = logging.getLogger("openpi")
 
@@ -47,7 +49,7 @@ def make_attn_mask(input_mask, mask_ar):
 
 @at.typecheck
 def posemb_sincos(
-    pos: at.Real[at.Array, " b"], embedding_dim: int, min_period: float, max_period: float
+        pos: at.Real[at.Array, " b"], embedding_dim: int, min_period: float, max_period: float
 ) -> at.Float[at.Array, "b {embedding_dim}"]:
     """Computes sine-cosine positional embedding vectors for scalar positions."""
     if embedding_dim % 2 != 0:
@@ -91,27 +93,27 @@ class Pi0Config(_model.BaseModelConfig):
 
         with at.disable_typechecking():
             observation_spec = _model.Observation(
-                # images={
-                #     "top_rgb": image_spec,
-                #     "right_wrist_rgb": image_spec,
-                #     "right_pole_rgb": image_spec,
-                #     "base_rgb": image_spec,
-                # },
-                # image_masks={
-                #     "top_rgb": image_mask_spec,
-                #     "right_wrist_rgb": image_mask_spec,
-                #     "right_pole_rgb": image_mask_spec,
-                #     "base_rgb": image_mask_spec,
-                # },
-                # 开始
                 images={
-                    "base_rgb": image_spec,
+                    "top_rgb": image_spec,
                     "right_wrist_rgb": image_spec,
+                    "right_pole_rgb": image_spec,
+                    "base_rgb": image_spec,
                 },
                 image_masks={
-                    "base_rgb": image_mask_spec,
+                    "top_rgb": image_mask_spec,
                     "right_wrist_rgb": image_mask_spec,
+                    "right_pole_rgb": image_mask_spec,
+                    "base_rgb": image_mask_spec,
                 },
+                # 开始
+                # images={
+                #     "base_rgb": image_spec,
+                #     "right_wrist_rgb": image_spec,
+                # },
+                # image_masks={
+                #     "base_rgb": image_mask_spec,
+                #     "right_wrist_rgb": image_mask_spec,
+                # },
                 state=jax.ShapeDtypeStruct([batch_size, self.action_dim], jnp.float32),
                 tokenized_prompt=jax.ShapeDtypeStruct([batch_size, self.max_token_len], jnp.int32),
                 tokenized_prompt_mask=jax.ShapeDtypeStruct([batch_size, self.max_token_len], bool),
@@ -184,7 +186,7 @@ class Pi0(_model.BaseModel):
 
     @at.typecheck
     def embed_prefix(
-        self, obs: _model.Observation
+            self, obs: _model.Observation
     ) -> tuple[at.Float[at.Array, "b s emb"], at.Bool[at.Array, "b s"], at.Bool[at.Array, " s"]]:
         input_mask = []
         ar_mask = []
@@ -218,7 +220,7 @@ class Pi0(_model.BaseModel):
 
     @at.typecheck
     def embed_suffix(
-        self, obs: _model.Observation, noisy_actions: _model.Actions, timestep: at.Float[at.Array, " b"]
+            self, obs: _model.Observation, noisy_actions: _model.Actions, timestep: at.Float[at.Array, " b"]
     ) -> tuple[at.Float[at.Array, "b s emb"], at.Bool[at.Array, "b s"], at.Bool[at.Array, " s"]]:
         input_mask = []
         ar_mask = []
@@ -250,7 +252,7 @@ class Pi0(_model.BaseModel):
 
     @override
     def compute_loss(
-        self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False
+            self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False
     ) -> at.Float[at.Array, "*b ah"]:
         preprocess_rng, noise_rng, time_rng = jax.random.split(rng, 3)
         observation = _model.preprocess_observation(preprocess_rng, observation, train=train)
@@ -272,18 +274,19 @@ class Pi0(_model.BaseModel):
         (prefix_out, suffix_out), _ = self.PaliGemma.llm(
             [prefix_tokens, suffix_tokens], mask=attn_mask, positions=positions
         )
-        v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+        v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
 
         return jnp.mean(jnp.square(v_t - u_t), axis=-1)
 
     @override
     def sample_actions(
-        self,
-        rng: at.KeyArrayLike,
-        observation: _model.Observation,
-        *,
-        num_steps: int | at.Int[at.Array, ""] = 10,
+            self,
+            rng: at.KeyArrayLike,
+            observation: _model.Observation,
+            *,
+            num_steps: int | at.Int[at.Array, ""] = 10,
     ) -> _model.Actions:
+        # jdebug.print("start sample actions")
         observation = _model.preprocess_observation(None, observation, train=False)
         # note that we use the convention more common in diffusion literature, where t=1 is noise and t=0 is the target
         # distribution. yes, this is the opposite of the pi0 paper, and I'm sorry.
@@ -299,38 +302,73 @@ class Pi0(_model.BaseModel):
 
         def step(carry):
             x_t, time = carry
-            suffix_tokens, suffix_mask, suffix_ar_mask = self.embed_suffix(
-                observation, x_t, jnp.broadcast_to(time, batch_size)
-            )
-            # `suffix_attn_mask` is shape (b, suffix_len, suffix_len) indicating how the suffix tokens can attend to each
-            # other
-            suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
-            # `prefix_attn_mask` is shape (b, suffix_len, prefix_len) indicating how the suffix tokens can attend to the
-            # prefix tokens
-            prefix_attn_mask = einops.repeat(prefix_mask, "b p -> b s p", s=suffix_tokens.shape[1])
-            # `combined_mask` is shape (b, suffix_len, prefix_len + suffix_len) indicating how the suffix tokens (which
-            # generate the queries) can attend to the full prefix + suffix sequence (which generates the keys and values)
-            full_attn_mask = jnp.concatenate([prefix_attn_mask, suffix_attn_mask], axis=-1)
-            assert full_attn_mask.shape == (
-                batch_size,
-                suffix_tokens.shape[1],
-                prefix_tokens.shape[1] + suffix_tokens.shape[1],
-            )
-            # `positions` is shape (b, suffix_len) indicating the positions of the suffix tokens
-            positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(suffix_mask, axis=-1) - 1
 
-            (prefix_out, suffix_out), _ = self.PaliGemma.llm(
-                [None, suffix_tokens], mask=full_attn_mask, positions=positions, kv_cache=kv_cache
-            )
-            assert prefix_out is None
-            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+            def denoise(x_t):
+                suffix_tokens, suffix_mask, suffix_ar_mask = self.embed_suffix(
+                    observation, x_t, jnp.broadcast_to(time, batch_size)
+                )
+                # `suffix_attn_mask` is shape (b, suffix_len, suffix_len) indicating how the suffix tokens can attend to each
+                # other
+                suffix_attn_mask = make_attn_mask(suffix_mask, suffix_ar_mask)
+                # `prefix_attn_mask` is shape (b, suffix_len, prefix_len) indicating how the suffix tokens can attend to the
+                # prefix tokens
+                prefix_attn_mask = einops.repeat(prefix_mask, "b p -> b s p", s=suffix_tokens.shape[1])
+                # `combined_mask` is shape (b, suffix_len, prefix_len + suffix_len) indicating how the suffix tokens (which
+                # generate the queries) can attend to the full prefix + suffix sequence (which generates the keys and values)
+                full_attn_mask = jnp.concatenate([prefix_attn_mask, suffix_attn_mask], axis=-1)
+                assert full_attn_mask.shape == (
+                    batch_size,
+                    suffix_tokens.shape[1],
+                    prefix_tokens.shape[1] + suffix_tokens.shape[1],
+                )
+                # `positions` is shape (b, suffix_len) indicating the positions of the suffix tokens
+                positions = jnp.sum(prefix_mask, axis=-1)[:, None] + jnp.cumsum(suffix_mask, axis=-1) - 1
+
+                (prefix_out, suffix_out), _ = self.PaliGemma.llm(
+                    [None, suffix_tokens], mask=full_attn_mask, positions=positions, kv_cache=kv_cache
+                )
+                assert prefix_out is None
+                # NOTE: v_t is actually the negative of the velocity as per the convention they've used here in openpi.
+                v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
+                return x_t - time * v_t, v_t
+
+            if observation.actions is None:
+                _, v_t = denoise(x_t)
+            else:
+                # Following https://www.pi.website/download/real_time_chunking.pdf
+                # NOTE: `time` here is the same as their (1 - tau)
+                # NOTE: v_t is actually the negative of the velocity as per the convention they've used here in openpi.
+                x_1, vjp_fun, v_t = jax.vjp(denoise, x_t, has_aux=True)
+                # Note: table A4 has this as 5.0, and the paper argues this is generally a good value. We believe that
+                # the right value is equal to the number of flow matching timesteps. We have shown empirically that
+                # setting this to 10 to match num_steps=10 works better.
+                # guidance_weight = num_steps
+
+                # The following logic is commented out because it is a verified implementation of what RTC is doing,
+                # but we have shown empircally (and rather tenatitively) that using a flat guidance schedule works
+                # better.
+                beta = 5
+                inv_r2 = ((1 - time) ** 2 + time**2) / (time**2)  # eq 4
+                guidance_weight = jnp.minimum(
+                    beta, jnp.nan_to_num(jnp.maximum(time, 0) / jnp.maximum(1 - time, 0), posinf=beta) * inv_r2
+                )
+
+                W = get_soft_guidance_mask(  # noqa: N806
+                    observation.inference_delay, observation.prior_attention_horizon, self.action_horizon, "exp"
+                )
+                error = (observation.actions - x_1) * W[:, None]
+                pinv_correction = vjp_fun(error)[0]
+
+                # Since v_t is the negative of the velocity, we subtract the correction instead of adding it.
+                v_t = v_t - guidance_weight * pinv_correction
 
             return x_t + dt * v_t, time + dt
 
         def cond(carry):
-            x_t, time = carry
+            _, time = carry
             # robust to floating-point error
             return time >= -dt / 2
 
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
+
         return x_0

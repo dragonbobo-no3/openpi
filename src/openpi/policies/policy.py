@@ -32,6 +32,7 @@ class Policy(BasePolicy):
         metadata: dict[str, Any] | None = None,
     ):
         self._sample_actions = nnx_utils.module_jit(model.sample_actions)
+        # self._sample_actions = model.sample_actions
         self._input_transform = _transforms.compose(transforms)
         self._output_transform = _transforms.compose(output_transforms)
         self._rng = rng or jax.random.key(0)
@@ -40,6 +41,7 @@ class Policy(BasePolicy):
 
     @override
     def infer(self, obs: dict) -> dict:  # type: ignore[misc]
+        # print("start policy infer")
         # Make a copy since transformations may modify the inputs in place.
         inputs = jax.tree.map(lambda x: x, obs)
         inputs = self._input_transform(inputs)
@@ -60,6 +62,7 @@ class Policy(BasePolicy):
         outputs["policy_timing"] = {
             "infer_ms": model_time * 1000,
         }
+        # print("end policy infer")
         return outputs
 
     @property

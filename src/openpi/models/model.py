@@ -30,19 +30,19 @@ class ModelType(enum.Enum):
     PI0_FAST = "pi0_fast"
 
 
-# # The model always expects these images
-# IMAGE_KEYS = (
-#     "top_rgb",
-#     "right_wrist_rgb",
-#     "right_pole_rgb",
-#     "base_rgb",
-# )
-
-# 开始
+# The model always expects these images
 IMAGE_KEYS = (
-    "base_rgb",
+    "top_rgb",
     "right_wrist_rgb",
+    "right_pole_rgb",
+    "base_rgb",
 )
+
+# # 开始
+# IMAGE_KEYS = (
+#     "base_rgb",
+#     "right_wrist_rgb",
+# )
 
 # This may need change if we release a small model.
 IMAGE_RESOLUTION = (224, 224)
@@ -107,6 +107,13 @@ class Observation(Generic[ArrayT]):
     # Token loss mask (for FAST autoregressive model).
     token_loss_mask: at.Bool[ArrayT, "*b l"] | None = None
 
+    # Hack: Use these for inpainting conditioning.
+    # NOTE: Don't change this name from "actions". We need to piggyback on the input transforms logic that's used at
+    # training time.
+    actions: at.Float[ArrayT, "*b H a"] | None = None  # (batch, horizon, action_dim)
+    inference_delay: at.Int[ArrayT, "1"] | None = None
+    prior_attention_horizon: at.Int[ArrayT, "1"] | None = None
+
     @classmethod
     def from_dict(cls, data: at.PyTree[ArrayT]) -> "Observation[ArrayT]":
         """This method defines the mapping between unstructured data (i.e., nested dict) to the structured Observation format."""
@@ -125,6 +132,9 @@ class Observation(Generic[ArrayT]):
             tokenized_prompt_mask=data.get("tokenized_prompt_mask"),
             token_ar_mask=data.get("token_ar_mask"),
             token_loss_mask=data.get("token_loss_mask"),
+            actions=data.get("actions"),
+            inference_delay=data.get("inference_delay"),
+            prior_attention_horizon=data.get("prior_attention_horizon"),
         )
 
     def to_dict(self) -> at.PyTree[ArrayT]:
@@ -204,6 +214,9 @@ def preprocess_observation(
         tokenized_prompt_mask=observation.tokenized_prompt_mask,
         token_ar_mask=observation.token_ar_mask,
         token_loss_mask=observation.token_loss_mask,
+        actions=observation.actions,
+        inference_delay=observation.inference_delay,
+        prior_attention_horizon=observation.prior_attention_horizon,
     )
 
 
