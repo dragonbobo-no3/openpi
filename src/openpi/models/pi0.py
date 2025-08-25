@@ -105,11 +105,11 @@ class Pi0Config(_model.BaseModelConfig):
                 # },
                 # 开始
                 images={
-                    "base_rgb": image_spec,
+                    "top_rgb": image_spec,
                     "right_wrist_rgb": image_spec,
                 },
                 image_masks={
-                    "base_rgb": image_mask_spec,
+                    "top_rgb": image_mask_spec,
                     "right_wrist_rgb": image_mask_spec,
                 },
                 state=jax.ShapeDtypeStruct([batch_size, self.action_dim], jnp.float32),

@@ -40,7 +40,7 @@ class ModelType(enum.Enum):
 
 # 开始
 IMAGE_KEYS = (
-    "base_rgb",
+    "top_rgb",
     "right_wrist_rgb",
 )
 

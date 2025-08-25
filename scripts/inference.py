@@ -19,6 +19,26 @@ from openpi.training import config as _config
 from third_party.agilex.agilexfollower import AlohaAgileXFollower
 from third_party.agilex.agilexconfig import AlohaAgileXFollowerConfig
 from third_party.cameras.opencv.configuration_opencv import OpenCVCameraConfig
+from third_party.cameras.orbbec.configuration_orbbec import OrbbecCameraConfig
+
+def make_camera_config(cfg: dict):
+    t = cfg.get('type')
+    if t == 'opencv':
+        return OpenCVCameraConfig(
+            index_or_path=cfg['index_or_path'],
+            width=cfg.get('width', 640),
+            height=cfg.get('height', 480),
+            fps=cfg.get('fps', 30),
+        )
+    elif t == 'orbbec':
+        return OrbbecCameraConfig(
+            index_or_path=cfg['index_or_path'],
+            width=cfg.get('width', 640),
+            height=cfg.get('height', 480),
+            fps=cfg.get('fps', 30),
+        )
+    else:
+        raise ValueError(f"Unsupported camera type: {t!r}")
 
 # ---------- 子进程：推理循环 ----------
 def inference_worker(
@@ -67,10 +87,9 @@ def main():
     # 解析摄像头配置
     if args.cameras is not None:
         raw = yaml.safe_load(args.cameras)
-        cameras = {name: OpenCVCameraConfig(index_or_path=cfg['index_or_path'], width=640, height=480, fps=30) for name, cfg in raw.items()} 
+        cameras = {name: make_camera_config(cfg) for name, cfg in raw.items()}
     else:
         cameras = {}
-
 
     robot_config = AlohaAgileXFollowerConfig(
         port=args.port,
