@@ -39,6 +39,7 @@ class CameraConfig(draccus.ChoiceRegistry, abc.ABC):
     width: int | None = None
     height: int | None = None
     device_list: pyorbbecsdk.DeviceList | None = None
+    use_depth: bool = False
 
     @property
     def type(self) -> str:

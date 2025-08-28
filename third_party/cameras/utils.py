@@ -17,6 +17,7 @@ import datetime
 import platform
 from pathlib import Path
 from typing import TypeAlias
+from datetime import datetime, timezone
 
 import pyorbbecsdk
 
@@ -72,4 +73,4 @@ def get_cv2_backend() -> int:
         return cv2.CAP_ANY
 
 def capture_timestamp_utc():
-    return datetime.now(datetime.timezone.utc)
+    return datetime.now(timezone.utc)
