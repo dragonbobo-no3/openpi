@@ -133,10 +133,17 @@ class AlohaAgileXFollower():
 
         # Capture images from cameras
         for cam_key, cam in self.cameras.items():
-            img = cam.async_read()  # (480, 640, 3)
-            # 把轴顺序从 (H, W, C) 改为 (C, H, W)
-            img_chw = np.transpose(img, (2, 0, 1))  # 结果形状 (3, 480, 640)
-            obs_dict["images"][cam_key] = img_chw
+            # start = time.perf_counter()
+            camera_frame = cam.async_read()
+            if isinstance(camera_frame, tuple):
+                color_image, depth_map = camera_frame
+                color_image = np.transpose(color_image, (2, 0, 1))
+                depth_map = np.transpose(depth_map, (2, 0, 1))
+                obs_dict["images"][cam_key] = color_image
+                obs_dict["images"][cam_key + "_depth"] = depth_map
+            else:
+                camera_frame = np.transpose(camera_frame, (2, 0, 1))
+                obs_dict["images"][cam_key] = camera_frame
 
         obs_dict["image_masks"] = {
             cam_key: np.array([True]) for cam_key in self.cameras.keys()
