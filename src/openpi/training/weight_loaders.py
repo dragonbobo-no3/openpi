@@ -91,12 +91,9 @@ def _merge_params(loaded_params: at.Params, params: at.Params, *, missing_regex:
     result = {}
     for k, v in flat_loaded.items():
         if k in flat_ref:
-            # 只加载 shape 完全一致的参数
-            if v.shape == flat_ref[k].shape:
-                result[k] = v.astype(flat_ref[k].dtype)
-            else:
-                # 跳过 shape 不一致的参数（比如 action_in_proj/kernel）
-                continue
+            result[k] = v.astype(flat_ref[k].dtype) if v.dtype != flat_ref[k].dtype else v
+
+    flat_loaded.clear()
 
     # Then, merge any missing weights as defined by the missing regex.
     pattern = re.compile(missing_regex)
