@@ -26,7 +26,7 @@ import openpi.training.optimizer as _optimizer
 import openpi.training.sharding as sharding
 import openpi.training.utils as training_utils
 import openpi.training.weight_loaders as _weight_loaders
-
+from openpi.training.csv_logger import log_to_csv
 
 def init_logging():
     """Custom logging format for better readability."""
@@ -307,6 +307,7 @@ def main(config: _config.TrainConfig):
             reduced_info = jax.device_get(jax.tree.map(jnp.mean, stacked_infos))
             info_str = ", ".join(f"{k}={v:.4f}" for k, v in reduced_info.items())
             pbar.write(f"Step {step}: {info_str}")
+            log_to_csv(info_str=info_str, step=step)
             wandb.log(reduced_info, step=step)
             infos = []
         batch = next(data_iter)

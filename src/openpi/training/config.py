@@ -289,7 +289,7 @@ class LeRobotAgileXDataConfigOld(DataConfigFactory):
 class LeRobotAgileXDataConfig(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
     # Gripper dimensions will remain in absolute values.
-    use_delta_joint_actions: bool = True
+    use_delta_joint_actions: bool = False
     # If provided, will be injected into the input data if the "prompt" key is not present.
     default_prompt: str | None = None
     # If true, this will convert the joint and gripper values from the standard Aloha space to
@@ -595,7 +595,7 @@ _CONFIGS = [
             decay_steps=3_000,
             decay_lr=1e-5,
         ),
-        num_train_steps=15_000,
+        num_train_steps=60_000,
         batch_size=512,
         log_interval=100,
         save_interval=2_500,
