@@ -96,6 +96,8 @@ class DataConfig:
     action_space: droid_rlds_dataset.DroidActionSpace | None = None
     # Path to the data filter file for DROID dataset
     filter_dict_path: str | None = None
+    # my edit
+    root: str | None = None
 
 
 class GroupFactory(Protocol):
@@ -312,7 +314,7 @@ class LeRobotAgileXDataConfigOld(DataConfigFactory):
 class LeRobotAgileXDataConfig(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
     # Gripper dimensions will remain in absolute values.
-    use_delta_joint_actions: bool = False
+    use_delta_joint_actions: bool = True
     # If provided, will be injected into the input data if the "prompt" key is not present.
     default_prompt: str | None = None
     # If true, this will convert the joint and gripper values from the standard Aloha space to
@@ -356,12 +358,13 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
         model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
 
         return dataclasses.replace(
-            self.create_base_config(assets_dirs),
+            self.create_base_config(assets_dirs, model_config),
             repack_transforms=self.repack_transforms,
             data_transforms=data_transforms,
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
-            repo_id="lerobot/test"
+            repo_id="lerobot/test",
+            root="/jedata/test_0807a_modified",
         )
 
 
@@ -653,15 +656,15 @@ _CONFIGS = [
                             action_expert_variant="gemma_300m",
                             action_dim=7,
                             action_horizon=50,
-                            max_token_len=48,
+                            max_token_len=128,
                             pi05=True),
         freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
                             action_expert_variant="gemma_300m",
                             action_dim=7,
                             action_horizon=50,
-                            max_token_len=48,
+                            max_token_len=128,
                             pi05=True).get_freeze_filter(),
-        weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi0_base/params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/jedata/test_0807a_modified/"),
             default_prompt="Pick up the PCB board on the round yellow base and place it into the circular recess of the yellow square container"
