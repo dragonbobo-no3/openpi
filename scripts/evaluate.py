@@ -12,14 +12,14 @@ from openpi.models.tokenizer import PaligemmaTokenizer
 def main():
     # 选择配置和 checkpoint
     config = _config.get_config("pi0_agileX")
-    checkpoint_dir = "/home/agx/jemodel/pi0_collect/60000"
+    checkpoint_dir = "/home/kleist/Documents/Model/cloud_server/model/openpi_0812_4cameras/39999"
     default_prompt="pick up the circular chip and place it on the yellow pot"
-    id = 92
+    id = 0
     period = 50
 
     # 直接用 LeRobotDataset 读取 episode
     repo_id = "lerobot/test"
-    root = "/home/agx/jedata/test_0711a"
+    root = "/home/kleist/Documents/Database/test_0807a_modified_v2"
     dataset = lerobot_dataset.LeRobotDataset(repo_id, root=root)
 
     # 获取所有 step 的 episode_index
@@ -52,11 +52,13 @@ def main():
                     "camera0": step["observation.images.camera0"],
                     "camera1": step["observation.images.camera1"],
                     "camera2": step["observation.images.camera2"],
+                    "camera3": step["observation.images.camera3"],
                 },
                 "image_masks": {
                     "camera0": np.array([True]),
                     "camera1": np.array([True]),
                     "camera2": np.array([True]),
+                    "camera3": np.array([True]),
                 },
                 "state": step["observation.state"],
                 "tokenized_prompt": tokenized[None],
