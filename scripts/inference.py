@@ -82,7 +82,7 @@ def main():
 
     logger_send_action = NumpyCSVLogger("logs/inference_sended_action_0819_2_cameras.csv", mode="w")
     logger_state_at_action = NumpyCSVLogger("logs/inference_state_at_action_0819_2_cameras.csv", mode="w")
-    print_log = True
+    print_log = False
 
     # 解析摄像头配置
     if args.cameras is not None:
@@ -196,8 +196,6 @@ def main():
     in_q.put(None)      # 通知子进程退出
     proc.join()
     robot.disconnect()
-    i, sent_idx, recv_idx = 0, 0, 0
-    kMaxTimeStamps = 6000
 
 if __name__ == "__main__":
     main()
