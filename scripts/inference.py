@@ -50,8 +50,8 @@ def inference_worker(
 ):
     # 1. 只在该进程里加载一次模型 / CUDA
     policy = _policy_config.create_trained_policy(config, checkpoint_dir)
-    logger_action = NumpyCSVLogger("logs/action_0819_2_cameras.csv", mode="w")
-    logger_obs = NumpyCSVLogger("logs/obs_0819_2_cameras.csv", mode="w")
+    logger_action = NumpyCSVLogger("logs/action_0915_2_cameras.csv", mode="w")
+    logger_obs = NumpyCSVLogger("logs/obs_0915_2_cameras.csv", mode="w")
     while True:
         item = in_q.get()
         if item is None:  # 收到结束标识
@@ -110,7 +110,7 @@ def main():
     ctx = mp.get_context("spawn")  # "spawn" 更安全，尤其 CUDA
     in_q: mp.Queue = ctx.Queue(maxsize=4)  # 根据实时性调节 maxsize
     out_q: mp.Queue = ctx.Queue(maxsize=4)
-    config = _config.get_config("pi0_agileX")
+    config = _config.get_config("pi05_agileX")
     checkpoint_dir = args.checkpoint_dir  # "/home/agx/jemodel/test/40000"
     logging.info(f"policy path: {checkpoint_dir}")
 
