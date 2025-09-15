@@ -180,7 +180,7 @@ def main():
     ctx = mp.get_context("spawn")        # "spawn" 更安全，尤其 CUDA
     in_q: mp.Queue = ctx.Queue(maxsize=4)   # 根据实时性调节 maxsize
     out_q: mp.Queue = ctx.Queue(maxsize=4)
-    config = _config.get_config("pi0_agileX")
+    config = _config.get_config("pi05_agileX")
     checkpoint_dir = args.checkpoint_dir #"/home/agx/jemodel/test/40000"
     logging.info(f"policy path: {checkpoint_dir}")
 
