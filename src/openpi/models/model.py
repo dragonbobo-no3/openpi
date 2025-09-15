@@ -41,6 +41,10 @@ IMAGE_KEYS = (
     "right_wrist_rgb",
     "right_pole_rgb",
     "base_rgb",
+    "top_rgb",
+    "right_wrist_rgb",
+    "right_pole_rgb",
+    "base_rgb",
 )
 
 # # 开始

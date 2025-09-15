@@ -34,16 +34,22 @@ def main():
     pred_actions_list = []
     obs = config.model.fake_obs()
     tokenizer = PaligemmaTokenizer()
+    bias = 0
     for t, idx in enumerate(episode):
+        if t >= max_frame:
+            break
+        index = t
         step = dataset[idx]
         # print(step.keys())
         gt_action = step["action"]
         prompt = step["task"]
         tokenized, mask = tokenizer.tokenize(prompt)
         gt_actions_list.append(np.array(gt_action))
+        if t < bias:
+            pred_actions_list.append(np.array(gt_action))
 
-        # 只在每个 period 的起点做一次推理
-        if t % period == 0:
+        # 只在每个 action_horizon 的起点做一次推理
+        if (index-bias) % action_horizon == 0:
             prompt = step["task"]
             tokenized, mask = tokenizer.tokenize(prompt)
             print(f"shape{step['observation.images.camera0'].shape}")
@@ -53,11 +59,13 @@ def main():
                     "camera1": step["observation.images.camera1"],
                     "camera2": step["observation.images.camera2"],
                     "camera3": step["observation.images.camera3"],
+                    "camera3": step["observation.images.camera3"],
                 },
                 "image_masks": {
                     "camera0": np.array([True]),
                     "camera1": np.array([True]),
                     "camera2": np.array([True]),
+                    "camera3": np.array([True]),
                     "camera3": np.array([True]),
                 },
                 "state": step["observation.state"],
@@ -71,17 +79,18 @@ def main():
             infer_time = time.time() - start_time
             print(f"Step {t}: infer time = {infer_time:.4f} seconds")
         
-            pred_actions = result["actions"][:period]  # shape: (period, action_dim)
-            # 存 period 步预测
+            pred_actions = result["actions"][:action_horizon]  # shape: (action_horizon, action_dim)
+            # 存 action_horizon 步预测
             for i in range(pred_actions.shape[0]):
                 pred_actions_list.append(np.array(pred_actions[i]))
 
 
         # 截断 pred_actions_list 以和 gt_actions_list 对齐（防止最后一段超出）
-        min_len = min(len(gt_actions_list), len(pred_actions_list))
-        gt_actions_arr = np.stack(gt_actions_list[:min_len])
-        pred_actions_arr = np.stack(pred_actions_list[:min_len])
-
+        # min_len = min(len(gt_actions_list), len(pred_actions_list))
+        # gt_actions_arr = np.stack(gt_actions_list[:min_len])
+        # pred_actions_arr = np.stack(pred_actions_list[:min_len])
+    gt_actions_arr = np.stack(gt_actions_list)
+    pred_actions_arr = np.stack(pred_actions_list)
 
     # 绘制所有动作分量的纵向排列图
     plt.figure(figsize=(12, 6))
@@ -92,15 +101,15 @@ def main():
         ax = axes[i]
         ax.plot(gt_actions_arr[:, i], label=f"GT action {i}", linestyle='--')
         ax.plot(pred_actions_arr[:, i], label=f"Pred action {i}")
-        highlight_idx = np.arange(0, len(pred_actions_arr), period)
-        ax.scatter(highlight_idx, pred_actions_arr[highlight_idx, i], color='red', label='First pred in period', zorder=5)
+        highlight_idx = np.arange(bias, len(pred_actions_arr), action_horizon)
+        ax.scatter(highlight_idx, pred_actions_arr[highlight_idx, i], color='red', label='First pred in action_horizon', zorder=5)
         ax.set_ylabel(f"Action dim {i}")
         ax.legend()
         ax.set_title(f"GT vs Predicted Actions (dim {i})")
 
     axes[-1].set_xlabel("Step")
     plt.tight_layout()
-    plt.savefig(f"/home/agx/jetest/period{period}_action_compare_all.png")
+    plt.savefig(f"./id{id}bias{bias}action_horizon{action_horizon}_action_compare_all.png")
     plt.close(fig)
 
     # 释放内存

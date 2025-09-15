@@ -12,6 +12,7 @@ import collections
 import yaml
 from scripts.numpy_logger import NumpyCSVLogger
 
+
 from openpi.policies import policy_config as _policy_config
 from openpi.models.tokenizer import PaligemmaTokenizer
 from openpi.training import config as _config
@@ -19,7 +20,6 @@ from third_party.agilex.agilexfollower import AlohaAgileXFollower
 from third_party.agilex.agilexconfig import AlohaAgileXFollowerConfig
 from third_party.cameras.opencv.configuration_opencv import OpenCVCameraConfig
 from third_party.cameras.orbbec.configuration_orbbec import OrbbecCameraConfig
-
 
 def make_camera_config(cfg: dict):
     t = cfg.get('type')
@@ -40,7 +40,6 @@ def make_camera_config(cfg: dict):
     else:
         raise ValueError(f"Unsupported camera type: {t!r}")
 
-
 # ---------- 子进程：推理循环 ----------
 def inference_worker(
         in_q: mp.Queue,
@@ -50,8 +49,8 @@ def inference_worker(
 ):
     # 1. 只在该进程里加载一次模型 / CUDA
     policy = _policy_config.create_trained_policy(config, checkpoint_dir)
-    logger_action = NumpyCSVLogger("logs/action_0915_2_cameras.csv", mode="w")
-    logger_obs = NumpyCSVLogger("logs/obs_0915_2_cameras.csv", mode="w")
+    logger_action = NumpyCSVLogger("logs/action_0819_2_cameras.csv", mode="w")
+    logger_obs = NumpyCSVLogger("logs/obs_0819_2_cameras.csv", mode="w")
     while True:
         item = in_q.get()
         if item is None:  # 收到结束标识
@@ -191,13 +190,13 @@ def main():
         i += 1
         dt_s = time.perf_counter() - t0
         # print(f"loop {i} dt={dt_s:.3f} s")
-        time.sleep(max(step_time - dt_s, 0))
+        time.sleep(max(step_time - dt_s,0))
+        
 
     # ==== 3. 结束 ====
     in_q.put(None)  # 通知子进程退出
     proc.join()
     robot.disconnect()
-
 
 if __name__ == "__main__":
     main()

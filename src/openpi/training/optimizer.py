@@ -24,9 +24,9 @@ class CosineDecaySchedule(LRScheduleConfig):
     def create(self) -> optax.Schedule:
         return optax.warmup_cosine_decay_schedule(
             init_value=self.peak_lr / (self.warmup_steps + 1),
-            peak_value=self.peak_lr,
-            warmup_steps=self.warmup_steps,
-            decay_steps=self.decay_steps,
+            peak_value=self.peak_lr, ## * k
+            warmup_steps=self.warmup_steps, ## * k
+            decay_steps=self.decay_steps, ## // k
             end_value=self.decay_lr,
         )
 
