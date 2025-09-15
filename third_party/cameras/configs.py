@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import draccus
-
+import pyorbbecsdk
 
 class ColorMode(str, Enum):
     RGB = "rgb"
@@ -38,6 +38,8 @@ class CameraConfig(draccus.ChoiceRegistry, abc.ABC):
     fps: int | None = None
     width: int | None = None
     height: int | None = None
+    device_list: pyorbbecsdk.DeviceList | None = None
+    use_depth: bool = False
 
     @property
     def type(self) -> str:

@@ -38,7 +38,7 @@ class AlohaAgileXFollower():
     name = "aloha_agilex_follower"
 
     def __init__(self, config: AlohaAgileXFollowerConfig):
-        
+
         self.config = config
         self.piper = C_PiperInterface(can_name=self.config.port)
         self.cameras = make_cameras_from_configs(config.cameras)
@@ -53,9 +53,17 @@ class AlohaAgileXFollower():
 
     @property
     def _cameras_ft(self) -> dict[str, tuple]:
-        return {
-            cam: (self.config.cameras[cam].height, self.config.cameras[cam].width, 3) for cam in self.cameras
+        base = {
+            cam: (self.config.cameras[cam].height,
+                  self.config.cameras[cam].width, 3)
+            for cam in self.cameras
         }
+        depth = {
+                f"{cam}_depth": (self.config.cameras[cam].height,
+                                 self.config.cameras[cam].width, 3)
+                for cam in self.cameras if self.cameras[cam].use_depth
+            }
+        return {**base, **depth}
 
     @cached_property
     def observation_features(self) -> dict[str, type | tuple]:
@@ -112,7 +120,7 @@ class AlohaAgileXFollower():
         # Read arm position
         start = time.perf_counter()
 
-        obs_dict = {        
+        obs_dict = {
             "state": np.ones((7,)),
             "images": {},
         }
@@ -125,14 +133,39 @@ class AlohaAgileXFollower():
 
         # Capture images from cameras
         for cam_key, cam in self.cameras.items():
-            img = cam.async_read()        # (480, 640, 3)
-            # 把轴顺序从 (H, W, C) 改为 (C, H, W)
-            img_chw = np.transpose(img, (2, 0, 1))   # 结果形状 (3, 480, 640)
-            obs_dict["images"][cam_key] = img_chw
+            # start = time.perf_counter()
+            camera_frame = cam.async_read()
+            if isinstance(camera_frame, tuple):
+                color_image, depth_map = camera_frame
+                color_image = np.transpose(color_image, (2, 0, 1))
+                depth_map = np.transpose(depth_map, (2, 0, 1))
+                obs_dict["images"][cam_key] = color_image
+                obs_dict["images"][cam_key + "_depth"] = depth_map
+            else:
+                camera_frame = np.transpose(camera_frame, (2, 0, 1))
+                obs_dict["images"][cam_key] = camera_frame
 
         obs_dict["image_masks"] = {
             cam_key: np.array([True]) for cam_key in self.cameras.keys()
         }
+
+        return obs_dict
+
+    def get_joint_state(self) -> dict[str, Any]:
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected.")
+
+        if not self.is_piper_port_connected_:
+            self.piper.ConnectPort()
+            self.is_piper_port_connected_ = True
+
+        # Read arm position
+        obs_dict = {
+            "state": np.ones((7,)),
+        }
+        for i in range(6):
+            obs_dict["state"][i] = getattr(self.piper.GetArmJointMsgs().joint_state, f"joint_{i + 1}")
+        obs_dict["state"][6] = self.piper.GetArmGripperMsgs().gripper_state.grippers_angle
 
         return obs_dict
 
@@ -172,7 +205,6 @@ class AlohaAgileXFollower():
 
         goal_pos = {key.removesuffix(".pos").removeprefix(f"{self.id}."): val for key, val in action.items() if
                     (key.endswith(".pos") and key.startswith(self.id))}
-
 
         # Send goal position to the arm
         factor = 1000 * 180 / math.pi
@@ -253,4 +285,3 @@ class AlohaAgileXFollower():
         if self.is_piper_port_connected_:
             self.piper.DisconnectPort()
             self.is_piper_port_connected_ = False
-
