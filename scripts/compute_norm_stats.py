@@ -20,6 +20,10 @@ class RemoveStrings(transforms.DataTransformFn):
     def __call__(self, x: dict) -> dict:
         return {k: v for k, v in x.items() if not np.issubdtype(np.asarray(v).dtype, np.str_)}
 
+class KeepOnly(transforms.DataTransformFn):
+    def __init__(self, keys): self.keys = set(keys)
+    def __call__(self, x: dict) -> dict:
+        return {k: v for k, v in x.items() if k in self.keys}
 
 def create_torch_dataloader(
     data_config: _config.DataConfig,
@@ -32,15 +36,31 @@ def create_torch_dataloader(
     if data_config.repo_id is None:
         raise ValueError("Data config must have a repo_id")
     dataset = _data_loader.create_torch_dataset(data_config, action_horizon, model_config)
+    # dataset = _data_loader.TransformedDataset(
+    #     dataset,
+    #     [
+    #         *data_config.repack_transforms.inputs,
+    #         *data_config.data_transforms.inputs,
+    #         # Remove strings since they are not supported by JAX and are not needed to compute norm stats.
+    #         RemoveStrings(),
+    #     ],
+    # )
+    stats_repack = transforms.Group(inputs=[
+        transforms.RepackTransform({
+            "state": "observation.state",
+            "actions": "action",
+            # 注意：不要再出现任何 images/camera 的映射
+        })
+    ])
     dataset = _data_loader.TransformedDataset(
         dataset,
         [
-            *data_config.repack_transforms.inputs,
-            *data_config.data_transforms.inputs,
-            # Remove strings since they are not supported by JAX and are not needed to compute norm stats.
+            *stats_repack.inputs,  # 只把 state/actions 对齐
+            KeepOnly(["state", "actions"]),  # 立即丢掉其他键
             RemoveStrings(),
         ],
     )
+
     if max_frames is not None and max_frames < len(dataset):
         num_batches = max_frames // batch_size
         shuffle = True
@@ -89,7 +109,6 @@ def create_rlds_dataloader(
 def main(config_name: str, max_frames: int | None = None):
     config = _config.get_config(config_name)
     data_config = config.data.create(config.assets_dirs, config.model)
-
     if data_config.rlds_data_dir is not None:
         data_loader, num_batches = create_rlds_dataloader(
             data_config, config.model.action_horizon, config.batch_size, max_frames
@@ -102,7 +121,14 @@ def main(config_name: str, max_frames: int | None = None):
     keys = ["state", "actions"]
     stats = {key: normalize.RunningStats() for key in keys}
 
+    # for b in data_loader:
+    #     print(b.keys())
+    #     break
+    #
+    # print("here")
     for batch in tqdm.tqdm(data_loader, total=num_batches, desc="Computing stats"):
+        # print(batch.keys())
+        # exit(1)
         for key in keys:
             stats[key].update(np.asarray(batch[key]))
 
