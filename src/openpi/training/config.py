@@ -175,12 +175,12 @@ class DataConfigFactory(abc.ABC):
     base_config: tyro.conf.Suppress[DataConfig | None] = None
 
     @abc.abstractmethod
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = True) -> DataConfig:
         """Create a data config."""
 
     def create_base_config(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
         repo_id = self.repo_id if self.repo_id is not tyro.MISSING else None
-        asset_id = "openpi_stats/"#self.assets.asset_id or repo_id
+        asset_id = "openpi_stats/"  # self.assets.asset_id or repo_id
         return dataclasses.replace(
             self.base_config or DataConfig(),
             repo_id=repo_id,
@@ -279,6 +279,7 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
             action_sequence_keys=self.action_sequence_keys,
         )
 
+
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgileXDataConfigOld(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
@@ -310,6 +311,7 @@ class LeRobotAgileXDataConfigOld(DataConfigFactory):
     # Action keys that will be used to read the action sequence from the dataset.
     action_sequence_keys: Sequence[str] = ("action",)
 
+
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgileXDataConfig(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
@@ -321,6 +323,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     # the space used by the pi internal runtime which was used to train the base model. People who
     # use standard Aloha data should set this to true.
     adapt_to_pi: bool = True
+    use_images: bool = True
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
@@ -343,9 +346,10 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = True) -> DataConfig:
         data_transforms = _transforms.Group(
-            inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi)],
+            inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
+                                               use_images=use_images)],
             outputs=[agileX_policy.AgileXOutputs(adapt_to_pi=self.adapt_to_pi)],
         )
         if self.use_delta_joint_actions:
@@ -364,7 +368,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_0807a_modified",
+            root="/home/kleist/Documents/Database/test_0928/",
         )
 
 
@@ -579,7 +583,7 @@ class TrainConfig:
     data: DataConfigFactory = dataclasses.field(default_factory=FakeDataConfig)
 
     # Base directory for config assets (e.g., norm stats).
-    assets_base_dir: str = ""#"./assets"
+    assets_base_dir: str = ""  # "./assets"
     # Base directory for checkpoints.
     checkpoint_base_dir: str = "./checkpoints"
 
@@ -644,7 +648,7 @@ _CONFIGS = [
     #
     # Finetune AgileX configs.
     #
-    #pi0.5
+    # pi0.5
     TrainConfig(
         name="pi05_agileX",
         # model = pi0_fast.Pi0FASTConfig(
@@ -652,22 +656,22 @@ _CONFIGS = [
         #     action_horizon=25,
         #     max_token_len=64,
         # ),
-        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=128,
-                            pi05=True),
-        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=128,
-                            pi05=True).get_freeze_filter(),
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
+                                   action_expert_variant="gemma_300m",
+                                   action_dim=7,
+                                   action_horizon=50,
+                                   max_token_len=128,
+                                   pi05=True),
+        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
+                                           action_expert_variant="gemma_300m",
+                                           action_dim=7,
+                                           action_horizon=50,
+                                           max_token_len=128,
+                                           pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/jedata/test_0807a_modified/"),
-            default_prompt="Pick up the PCB board on the round yellow base and place it into the circular recess of the yellow square container"
+            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_0928/"),
+            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
@@ -682,10 +686,10 @@ _CONFIGS = [
         log_interval=100,
         save_interval=2_500,
         keep_period=2_500,
-        num_workers=4,
+        num_workers=16,
         fsdp_devices=8,
-    ),     
-    #pi0
+    ),
+    # pi0
     TrainConfig(
         name="pi0_agileX",
         # model = pi0_fast.Pi0FASTConfig(
@@ -693,16 +697,16 @@ _CONFIGS = [
         #     action_horizon=25,
         #     max_token_len=64,
         # ),
-        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=48),
-        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=48).get_freeze_filter(),
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
+                                   action_expert_variant="gemma_300m",
+                                   action_dim=7,
+                                   action_horizon=50,
+                                   max_token_len=48),
+        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
+                                           action_expert_variant="gemma_300m",
+                                           action_dim=7,
+                                           action_horizon=50,
+                                           max_token_len=48).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi0_base/params"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/jedata/test_0807a_modified/"),
@@ -723,18 +727,18 @@ _CONFIGS = [
         keep_period=2_500,
         num_workers=4,
         fsdp_devices=8,
-    ), 
-    #pi0_fast 
+    ),
+    # pi0_fast
     TrainConfig(
         name="pi0_fast_agileX",
-        model = pi0_fast.Pi0FASTConfig(
+        model=pi0_fast.Pi0FASTConfig(
             paligemma_variant="gemma_2b_lora",
             action_dim=7,  # 6 joints + 1 gripper actions
             action_horizon=25,
             max_token_len=128,
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
-            paligemma_variant="gemma_2b_lora", 
+            paligemma_variant="gemma_2b_lora",
             action_dim=7,
             action_horizon=25,
             max_token_len=128,
@@ -753,7 +757,7 @@ _CONFIGS = [
         keep_period=20_000,
         num_workers=4,
         fsdp_devices=8,
-    ),    
+    ),
     #
     # Inference Aloha configs.
     #

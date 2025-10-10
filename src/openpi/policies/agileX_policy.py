@@ -22,79 +22,55 @@ def make_aloha_example() -> dict:
 
 @dataclasses.dataclass(frozen=True)
 class AgileXInputs(transforms.DataTransformFn):
-    """Inputs for the Aloha policy.
+    """Inputs for the Aloha/AgileX policy.
 
-    Expected inputs:
-    - images: dict[name, img] where img is [channel, height, width]. name must be in EXPECTED_CAMERAS.
+    Expected inputs when use_images=True:
+    - images: dict[name, img] where img is [C, H, W]. name must be in EXPECTED_CAMERAS.
     - state: [14]
-    - actions: [action_horizon, 14]
+    - actions: [action_horizon, 14]  (optional during inference)
     """
 
-    # The action dimension of the model. Will be used to pad state and actions.
     action_dim: int
-
-    # If true, this will convert the joint and gripper values from the standard Aloha space to
-    # the space used by the pi internal runtime which was used to train the base model.
     adapt_to_pi: bool = True
+    # ← 新增：是否处理相机图像。False 时不访问 data["images"]，也不调用 _decode_aloha。
+    use_images: bool = True
 
-    # The expected cameras names. All input cameras must be in this set. Missing cameras will be
-    # replaced with black images and the corresponding `image_mask` will be set to False.
     EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2", "camera3")
 
     def __call__(self, data: dict) -> dict:
-        data = _decode_aloha(data, adapt_to_pi=self.adapt_to_pi)
+        # 仅在需要图像时才调用 _decode_aloha（其内部会访问 data["images"]）
+        data = _decode_aloha(data, adapt_to_pi=self.adapt_to_pi, use_images=self.use_images)
 
-        # Get the state. We are padding from 14 to the model action dim.
+        # ---- state ----
         state = transforms.pad_to_dim(data["state"], self.action_dim)
 
-        in_images = data["images"]
-        if set(in_images) - set(self.EXPECTED_CAMERAS):
-            raise ValueError(f"Expected images to contain {self.EXPECTED_CAMERAS}, got {tuple(in_images)}")
+        # ---- images（可选）----
+        images = {}
+        image_masks = {}
 
-        # Assume that base image always exists.
-        top_image = in_images["camera0"]
-        right_wrist_image = in_images["camera1"]
-        right_pole_image = in_images["camera2"]
-        base_image = in_images["camera3"]
+        if self.use_images:
+            in_images = data["images"]
+            if set(in_images) - set(self.EXPECTED_CAMERAS):
+                raise ValueError(f"Expected images to contain {self.EXPECTED_CAMERAS}, got {tuple(in_images)}")
 
-        images = {
-            "top_rgb": top_image,
-            "right_wrist_rgb": right_wrist_image,
-            "right_pole_rgb": right_pole_image,
-        }
-        image_masks = {
-            "top_rgb": np.True_,
-            "right_wrist_rgb": np.True_,
-            "right_pole_rgb": np.True_,
-        }
+            top_image         = in_images["camera0"]
+            right_wrist_image = in_images["camera1"]
+            right_pole_image  = in_images["camera2"]
+            base_image        = in_images["camera3"]
 
-        # Add the extra images.
-        extra_image_names = {
-            "base_rgb": "camera3",
-        }
-
-        # # 从这开始
-        # images = {
-        #     "right_wrist_rgb": right_wrist_image,
-        #     "right_pole_rgb": right_pole_image,
-        # }
-        # image_masks = {
-        #     "right_wrist_rgb": np.True_,
-        #     "right_pole_rgb": np.True_,
-        # }
-
-        # # Add the extra images.
-        # extra_image_names = {
-        # }
-        # # 到这结束
-
-        for dest, source in extra_image_names.items():
-            if source in in_images:
-                images[dest] = in_images[source]
-                image_masks[dest] = np.True_
-            else:
-                images[dest] = np.zeros_like(base_image)
-                image_masks[dest] = np.False_
+            images = {
+                "top_rgb":          top_image,
+                "right_wrist_rgb":  right_wrist_image,
+                "right_pole_rgb":   right_pole_image,
+                "base_rgb":         base_image,
+            }
+            image_masks = {
+                "top_rgb":          np.True_,
+                "right_wrist_rgb":  np.True_,
+                "right_pole_rgb":   np.True_,
+                "base_rgb":         np.True_,
+            }
+        # use_images=False 时，images / image_mask 留空字典，保证下游拿到键不报错
 
         inputs = {
             "image": images,
@@ -102,7 +78,7 @@ class AgileXInputs(transforms.DataTransformFn):
             "state": state,
         }
 
-        # Actions are only available during training.
+        # ---- actions（训练阶段才有）----
         if "actions" in data:
             actions = np.asarray(data["actions"])
             actions = _encode_actions_inv(actions, adapt_to_pi=self.adapt_to_pi)
@@ -183,25 +159,39 @@ def _gripper_from_angular_inv(value):
     return value - 0.5476
 
 
-def _decode_aloha(data: dict, *, adapt_to_pi: bool = False) -> dict:
-    # state is [left_arm_joint_angles, right_arm_joint_angles, left_arm_gripper, right_arm_gripper]
-    # dim sizes: [6, 1, 6, 1]
+def _decode_aloha(
+    data: dict,
+    *,
+    adapt_to_pi: bool = False,
+    use_images: bool = True,   # ← 新增开关
+) -> dict:
+    # --- state 始终解码 ---
     state = np.asarray(data["state"])
     state = _decode_state(state, adapt_to_pi=adapt_to_pi)
+    data["state"] = state
+
+    # --- 图像可选 ---
+    if not use_images:
+        # 不处理/不访问 data["images"]，保持原样或缺省
+        return data
+
+    images = data.get("images")
+    if not isinstance(images, dict) or len(images) == 0:
+        # 没有图像就直接返回（也可改成 raise KeyError("images")，看你需要的严格程度）
+        return data
 
     def convert_image(img):
-        img = np.asarray(img)
-        # Convert to uint8 if using float images.
-        if np.issubdtype(img.dtype, np.floating):
-            img = (255 * img).astype(np.uint8)
-        # Convert from [channel, height, width] to [height, width, channel].
-        return einops.rearrange(img, "c h w -> h w c")
+        arr = np.asarray(img)
+        # 浮点图转 uint8
+        if np.issubdtype(arr.dtype, np.floating):
+            arr = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
+        # 只在明显是 CHW 时才转成 HWC
+        if arr.ndim == 3 and arr.shape[0] in (1, 3, 4) and arr.shape[-1] not in (1, 3, 4):
+            arr = einops.rearrange(arr, "c h w -> h w c")
+        return arr
 
-    images = data["images"]
     images_dict = {name: convert_image(img) for name, img in images.items()}
-
     data["images"] = images_dict
-    data["state"] = state
     return data
 
 

@@ -15,7 +15,7 @@ import openpi.training.config as _config
 import openpi.training.data_loader as _data_loader
 import openpi.transforms as transforms
 
-
+#删掉字典中值为字符串的键值对
 class RemoveStrings(transforms.DataTransformFn):
     def __call__(self, x: dict) -> dict:
         return {k: v for k, v in x.items() if not np.issubdtype(np.asarray(v).dtype, np.str_)}
@@ -39,12 +39,15 @@ def create_torch_dataloader(
     # dataset = _data_loader.TransformedDataset(
     #     dataset,
     #     [
-    #         *data_config.repack_transforms.inputs,
-    #         *data_config.data_transforms.inputs,
+    #         *data_config.repack_transforms.inputs, # Group(inputs=[RepackTransform(structure={'images': {'camera0': 'observation.images.camera0', 'camera1': 'observation.images.camera1', 'camera2': 'observation.images.camera2', 'camera3': 'observation.images.camera3'}, 'state': 'observation.state', 'actions': 'action'})], outputs=())
+    #         *data_config.data_transforms.inputs, # Group(inputs=(AgileXInputs(action_dim=7, adapt_to_pi=True), DeltaActions(mask=(True, True, True, True, True, True, False))), outputs=(AbsoluteActions(mask=(True, True, True, True, True, True, False)), AgileXOutputs(adapt_to_pi=True)))
     #         # Remove strings since they are not supported by JAX and are not needed to compute norm stats.
     #         RemoveStrings(),
     #     ],
     # )
+    # print(data_config.repack_transforms)
+    # print(data_config.data_transforms)
+    # exit(1)
     stats_repack = transforms.Group(inputs=[
         transforms.RepackTransform({
             "state": "observation.state",
@@ -52,11 +55,12 @@ def create_torch_dataloader(
             # 注意：不要再出现任何 images/camera 的映射
         })
     ])
+
     dataset = _data_loader.TransformedDataset(
         dataset,
         [
-            *stats_repack.inputs,  # 只把 state/actions 对齐
-            KeepOnly(["state", "actions"]),  # 立即丢掉其他键
+            *stats_repack.inputs, # Group(inputs=[RepackTransform(structure={'images': {'camera0': 'observation.images.camera0', 'camera1': 'observation.images.camera1', 'camera2': 'observation.images.camera2', 'camera3': 'observation.images.camera3'}, 'state': 'observation.state', 'actions': 'action'})], outputs=())
+            *data_config.data_transforms.inputs, # Group(inputs=(AgileXInputs(action_dim=7, adapt_to_pi=True), DeltaActions(mask=(True, True, True, True, True, True, False))), outputs=(AbsoluteActions(mask=(True, True, True, True, True, True, False)), AgileXOutputs(adapt_to_pi=True)))
             RemoveStrings(),
         ],
     )
@@ -108,7 +112,7 @@ def create_rlds_dataloader(
 
 def main(config_name: str, max_frames: int | None = None):
     config = _config.get_config(config_name)
-    data_config = config.data.create(config.assets_dirs, config.model)
+    data_config = config.data.create(config.assets_dirs, config.model, False)
     if data_config.rlds_data_dir is not None:
         data_loader, num_batches = create_rlds_dataloader(
             data_config, config.model.action_horizon, config.batch_size, max_frames
