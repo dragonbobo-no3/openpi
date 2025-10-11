@@ -699,7 +699,7 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/jedata/test_0928_v2/"),
-            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container."
+            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
             use_delta_joint_actions = False,
             adapt_to_pi = False,
         ),
