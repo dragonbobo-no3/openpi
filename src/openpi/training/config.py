@@ -396,7 +396,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_0807a_modified",
+            root="/jedata/test_0928_v2",
         )
 
 
@@ -687,19 +687,21 @@ _CONFIGS = [
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
                             action_expert_variant="gemma_300m",
                             action_dim=7,
-                            action_horizon=50,
+                            action_horizon=30,
                             max_token_len=128,
                             pi05=True),
         freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
                             action_expert_variant="gemma_300m",
                             action_dim=7,
-                            action_horizon=50,
+                            action_horizon=30,
                             max_token_len=128,
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/jedata/test_0807a_modified/"),
-            default_prompt="Pick up the PCB board on the round yellow base and place it into the circular recess of the yellow square container"
+            assets=AssetsConfig(assets_dir="/jedata/test_0928_v2/"),
+            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container."
+            use_delta_joint_actions = False,
+            adapt_to_pi = False,
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
@@ -709,12 +711,12 @@ _CONFIGS = [
             decay_steps=3_000,
             decay_lr=1e-5,
         ),
-        num_train_steps=60_000,
+        num_train_steps=1_000_000,
         batch_size=512,
         log_interval=100,
         save_interval=2_500,
-        keep_period=2_500,
-        num_workers=4,
+        keep_period=5_000,
+        num_workers=8,
         fsdp_devices=8,
     ),     
     #pi0
