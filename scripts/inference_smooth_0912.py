@@ -152,8 +152,8 @@ def main():
     parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
     args = parser.parse_args()
 
-    logger = NumpyCSVLogger("logs/1a.csv", mode="w")
-    print_log = False
+    logger = NumpyCSVLogger("logs/smooth_0918.csv", mode="w")
+    print_log = True
 
     # 解析摄像头配置
     if args.cameras is not None:

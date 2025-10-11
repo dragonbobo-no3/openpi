@@ -81,9 +81,9 @@ def main():
     parser.add_argument("--use_degrees", action="store_true")
     args = parser.parse_args()
 
-    logger_send_action = NumpyCSVLogger("logs/inference_sended_action_0819_2_cameras.csv", mode="w")
-    logger_state_at_action = NumpyCSVLogger("logs/inference_state_at_action_0819_2_cameras.csv", mode="w")
-    print_log = False
+    logger_send_action = NumpyCSVLogger("logs/inference_sended_action_0918.csv", mode="w")
+    logger_state_at_action = NumpyCSVLogger("logs/inference_state_at_action_0918.csv", mode="w")
+    print_log = True
 
     # 解析摄像头配置
     if args.cameras is not None:

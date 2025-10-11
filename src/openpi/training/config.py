@@ -175,12 +175,12 @@ class DataConfigFactory(abc.ABC):
     base_config: tyro.conf.Suppress[DataConfig | None] = None
 
     @abc.abstractmethod
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = True) -> DataConfig:
         """Create a data config."""
 
     def create_base_config(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
         repo_id = self.repo_id if self.repo_id is not tyro.MISSING else None
-        asset_id = "openpi_stats/"#self.assets.asset_id or repo_id
+        asset_id = "openpi_stats/"  # self.assets.asset_id or repo_id
         return dataclasses.replace(
             self.base_config or DataConfig(),
             repo_id=repo_id,
@@ -279,6 +279,7 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
             action_sequence_keys=self.action_sequence_keys,
         )
 
+
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgileXDataConfigOld(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
@@ -310,6 +311,7 @@ class LeRobotAgileXDataConfigOld(DataConfigFactory):
     # Action keys that will be used to read the action sequence from the dataset.
     action_sequence_keys: Sequence[str] = ("action",)
 
+
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgileXDataConfig(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
@@ -321,6 +323,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     # the space used by the pi internal runtime which was used to train the base model. People who
     # use standard Aloha data should set this to true.
     adapt_to_pi: bool = True
+    use_images: bool = True
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
@@ -375,9 +378,10 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = True) -> DataConfig:
         data_transforms = _transforms.Group(
-            inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi)],
+            inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
+                                               use_images=use_images)],
             outputs=[agileX_policy.AgileXOutputs(adapt_to_pi=self.adapt_to_pi)],
         )
         if self.use_delta_joint_actions:
@@ -690,7 +694,7 @@ _CONFIGS = [
                             action_horizon=30,
                             max_token_len=128,
                             pi05=True),
-        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
+        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
                             action_expert_variant="gemma_300m",
                             action_dim=7,
                             action_horizon=30,
