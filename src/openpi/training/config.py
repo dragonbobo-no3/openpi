@@ -400,7 +400,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_0928_v2",
+            root="/home/kleist/Documents/Database/test_0928_100_v2/",
         )
 
 
@@ -702,7 +702,7 @@ _CONFIGS = [
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/jedata/test_0928_v2/"),
+            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_0928_100_v2/"),
             default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
             use_delta_joint_actions = False,
             adapt_to_pi = False,
