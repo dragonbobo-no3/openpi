@@ -148,6 +148,10 @@ def plot_saved(args):
     period = int(data["period"])
     infer_states = data["infer_states"]  # ⭐ [K, A]，每次推理使用的 state
 
+    for i in range(gt.shape[0]):
+        if gt[i].max() > 1e8:
+            gt[i] = gt[i-1] if i > 0 else gt[i+1]
+
     T, A = gt.shape
     assert pred.shape == gt.shape, f"Shape mismatch: gt {gt.shape}, pred {pred.shape}"
     K = infer_states.shape[0]
@@ -195,13 +199,13 @@ def build_cli():
     # run
     p_run = subparsers.add_parser("run", help="Run inference and save results to .npz")
     p_run.add_argument("--config", default="pi05_agileX")
-    p_run.add_argument("--checkpoint_dir", default="/home/kleist/Documents/Model/cloud_server/1013_pi05_test/10000/")
+    p_run.add_argument("--checkpoint_dir", default="/home/test/jemotor/jemodel/pi05/1014_pi05_test/12500/")
     p_run.add_argument("--repo_id", default="lerobot/test")
-    p_run.add_argument("--root", default="/home/kleist/Documents/Database/test_0928_100_v2/")
-    p_run.add_argument("--episode_id", type=int, default=54)
+    p_run.add_argument("--root", default="/home/test/jemotor/jedata/test_0928_100_v2/")
+    p_run.add_argument("--episode_id", type=int, default=86)
     p_run.add_argument("--period", type=int, default=50)
     p_run.add_argument("--default_prompt", default="pick up the circular chip and place it on the yellow pot")
-    p_run.add_argument("--out", default="./temp4.npz")
+    p_run.add_argument("--out", default="./temp2.npz")
     p_run.add_argument("--plot-after-run", action="store_true", help="After saving npz, immediately plot.")
     p_run.add_argument("--out-png", default="", help="If --plot-after-run, output PNG path (optional).")
     p_run.add_argument("--dpi", type=int, default=150)
@@ -209,8 +213,8 @@ def build_cli():
 
     # plot
     p_plot = subparsers.add_parser("plot", help="Plot GT vs Pred from saved .npz")
-    p_plot.add_argument("--inp", default="./temp4.npz")
-    p_plot.add_argument("--out", default="./temp4.png")
+    p_plot.add_argument("--inp", default="./temp1.npz")
+    p_plot.add_argument("--out", default="./temp1.png")
     p_plot.add_argument("--dpi", type=int, default=150)
     p_plot.set_defaults(func=plot_saved)
 

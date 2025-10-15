@@ -85,7 +85,8 @@ class AlohaAgileXFollower():
         """
         if self.is_connected:
             raise DeviceAlreadyConnectedError(f"{self} already connected")
-        # self.piper.ConnectPort()
+        self.piper.ConnectPort()
+        self.is_piper_port_connected_ = True
         self.is_robot_connected_ = True
         for cam in self.cameras.values():
             cam.connect()
@@ -148,7 +149,7 @@ class AlohaAgileXFollower():
         obs_dict["image_masks"] = {
             cam_key: np.array([True]) for cam_key in self.cameras.keys()
         }
-
+        # print(obs_dict["images"].keys())
         return obs_dict
 
     def get_joint_state(self) -> dict[str, Any]:
@@ -220,7 +221,7 @@ class AlohaAgileXFollower():
                              joint_3, joint_4, joint_5)
         self.piper.GripperCtrl(abs(joint_6), 1000, 0x01, 0)
         # self.piper.MotionCtrl_2(0x01, 0x01, 100)
-
+        print(f"send action 1: {joint_0, joint_1, joint_2, joint_3, joint_4, joint_5, joint_6}")
         return {f"{motor}.pos": val for motor, val in goal_pos.items()}
 
     def send_action_np(self, action: np.ndarray):
@@ -252,6 +253,7 @@ class AlohaAgileXFollower():
         # logging.info(
         #     f"time cost {1e3 * (time_point1 - start_episode_t):.3f}/{1e3 * (time_point2 - start_episode_t):.3f}/"
         #     f"{1e3 * (time_point3 - start_episode_t):.3f}/{1e3 * (time_point4 - start_episode_t):.3f}")
+        # print(f"send action 2: {action}")
         return
 
     @property

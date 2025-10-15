@@ -323,4 +323,13 @@ We will collect common issues and their solutions here. If you encounter an issu
 | Diverging training loss                            | Check the `q01`, `q99`, and `std` values in `norm_stats.json` for your dataset. Certain dimensions that are rarely used can end up with very small `q01`, `q99`, or `std` values, leading to huge states and actions after normalization. You can manually adjust the norm stats as a workaround. |
 
 
- NCCL_NVLS_ENABLE=0 uv run scripts/train.py pi05_agileX --exp-name=/jedata/jemotor/model/1009_pi05_test --data.repo_id=lerobot/test --no_wandb_enabled
+uv run -m scripts.inference --port=can_right --checkpoint_dir=/home/test/jemotor/jemodel/pi05/1014_pi05_test/12500/ --cameras="{camera0: {type: orbbec, index_or_path: CP02653000ZL, width: 640, height: 480, fps: 30},camera1: {type: orbbec, index_or_path: CP02653000YJ, width: 640, height: 480, fps: 30},camera2: {type: orbbec, index_or_path: CP02653000YR, width: 640, height: 480, fps: 30},camera3: {type: orbbec, index_or_path: CP02653000R4, width: 640, height: 480, fps: 30}}" --task="Pick up the PCB board from the green conveyor belt and place it into the yellow container."
+
+wrist CP02653000YJ
+base CP02653000ZL
+left pole CP02653000YR
+right back CP02653000R4
+
+bbcp   -f -P 5 -s 64 -w 256M -v -r -z  alice@10.215.247.2:/jedata/jemotor/model/1009_pi05_test/10000 /home/test/jemotor/cloud_server/
+
+uv run scripts/plot_action_compare.py --pred_action /home/test/jemotor/openpi/logs/inference_sended_action_0930_4_cameras.csv --send_action /home/test/jemotor/openpi/logs/inference_state_at_action_0930_4_cameras.csv

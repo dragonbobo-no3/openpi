@@ -51,6 +51,7 @@ def inference_worker(
     policy = _policy_config.create_trained_policy(config, checkpoint_dir)
     logger_action = NumpyCSVLogger("logs/action_0819_2_cameras.csv", mode="w")
     logger_obs = NumpyCSVLogger("logs/obs_0819_2_cameras.csv", mode="w")
+    
     while True:
         item = in_q.get()
         if item is None:  # 收到结束标识
@@ -60,11 +61,24 @@ def inference_worker(
         start_time = time.time()
         result = policy.infer(obs)
         infer_time = time.time() - start_time
-        print(f"Step {idx}: infer time = {infer_time:.4f} seconds")
-        logger_obs.log(obs['state'])
+        # 打印第一个动作和收到的state
+        first_action = result['actions'][0] if len(result['actions']) > 0 else None
+        state = obs.get('state')
+        log_str = f"Step {idx}: infer time = {infer_time:.4f} seconds\n  state: {state}\n  first_action: {first_action}"
+        # 检查shape
+        warn = True
+        if isinstance(state, np.ndarray) and isinstance(first_action, np.ndarray):
+            if state.shape == first_action.shape:
+                for i, (s, a) in enumerate(zip(state.shape, first_action.shape)):
+                    if abs(s - a) > 20000:
+                        print(f"[WARNING] state/first_action dim {i} diff > 20000! state.shape: {state.shape}, first_action.shape: {first_action.shape}\n{log_str}")
+                        warn = True
+                        break
+        if not warn:
+            print(log_str)
+        logger_obs.log(time.perf_counter(), obs['state'])
         for row in result['actions']:
-            logger_action.log(row)
-        # print(f"Inference result: {obs['state'].shape}: prediction: {result['actions'].shape}")
+            logger_action.log(time.perf_counter(), row)
         out_q.put((idx, result["actions"]))
 
 
@@ -81,8 +95,8 @@ def main():
     parser.add_argument("--use_degrees", action="store_true")
     args = parser.parse_args()
 
-    logger_send_action = NumpyCSVLogger("logs/inference_sended_action_0918.csv", mode="w")
-    logger_state_at_action = NumpyCSVLogger("logs/inference_state_at_action_0918.csv", mode="w")
+    logger_send_action = NumpyCSVLogger("logs/inference_sended_action_0930_4_cameras.csv", mode="w")
+    logger_state_at_action = NumpyCSVLogger("logs/inference_state_at_action_0930_4_cameras.csv", mode="w")
     print_log = True
 
     # 解析摄像头配置
@@ -134,6 +148,9 @@ def main():
     action_queue = collections.deque()  # 存储当前动作序列
     waiting_for_infer = False
 
+    # robot.send_action_np(np.array([-7980, 20113, -2285, -7921, 37285,  1023,     0.]))
+    robot.send_action_np(np.array([0,0,0,0,0,0,0]))
+    time.sleep(60)
     while i < kMaxTimeStamps:
         t0 = time.perf_counter()
 
@@ -143,13 +160,16 @@ def main():
             robot.send_action_np(action_to_send[:7])
             waiting_for_infer = False  # 只要能发动作就不是等待状态
             if print_log:
-                logger_send_action.log(action_to_send[:7])
+                logger_send_action.log(time.perf_counter(),action_to_send[:7])
                 current_state = robot.get_joint_state()
-                logger_state_at_action.log(current_state['state'])
+                logger_state_at_action.log(time.perf_counter(),current_state['state'])
 
         # 如果动作队列空了，且不在等待推理，则采集观测并发给子进程
         elif not waiting_for_infer:
             obs = robot.get_observation()
+            # print(f"state1: {obs['state']}")
+            state2 = robot.get_joint_state()['state']
+            # print(f"state2: {state2}")
             obs["state"] = obs["state"]
             obs["tokenized_prompt"] = tokenized[None]
             obs["tokenized_prompt_mask"] = mask[None]
@@ -176,9 +196,9 @@ def main():
                 action_to_send = action_queue.popleft()
                 robot.send_action_np(action_to_send[:7])
                 if print_log:
-                    logger_send_action.log(action_to_send[:7])
+                    logger_send_action.log(time.perf_counter(),action_to_send[:7])
                     current_state = robot.get_joint_state()
-                    logger_state_at_action.log(current_state['state'])
+                    logger_state_at_action.log(time.perf_counter(),current_state['state'])
 
                 # print(f'publish an action:{time.perf_counter()}')
                 waiting_for_infer = False

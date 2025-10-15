@@ -146,7 +146,7 @@ def main():
     parser.add_argument("--cameras", type=str, required=False, help="camera config yaml", default=None)
     parser.add_argument("--max_relative_target", type=int, required=False, default=None)
     parser.add_argument("--use_degrees", action="store_true")
-    parser.add_argument("--action_steps", type=int, required=False, default=20, help="number of action steps to execute before next inference")
+    parser.add_argument("--action_steps", type=int, required=False, default=0, help="number of action steps to execute before next inference")
     parser.add_argument("--smooth_type", type=str, default="cubic", choices=["linear", "cubic", "quintic", "ema"], help="动作平滑策略: linear/cubic/quintic/ema")
     parser.add_argument("--ema_alpha", type=float, default=0.7, help="EMA平滑时新动作权重alpha,0~1")
     parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
@@ -207,6 +207,8 @@ def main():
     action_step_counter = 0  # 记录已执行的动作步数
     first = True
 
+    robot.send_action_np(np.array([-7980, 20113, -2285, -7921, 37285,  1023,     0.]))
+    time.sleep(1)
     while i < kMaxTimeStamps:
         t0 = time.perf_counter()
 

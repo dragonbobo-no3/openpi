@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Plot columns from action & inference_sended_action CSVs
+python3 scripts/plot_action_compare.py --pred_action ./logs/inference_sended_action_0930_4_cameras.csv --send_action ./logs/inference_state_at_action_0930_4_cameras.csv
+"""
 
 import os
 import argparse
@@ -48,8 +52,8 @@ def main():
 
     for j in range(D):
         ax = axes[j]
-        ax.plot(x_act, action[:, j], label="action", linewidth=1.0)
-        ax.plot(x_inf, infer[:, j], label="inference_sended_action", linewidth=1.0, alpha=0.85)
+        ax.plot(x_act, action[:, j], label="sendend action from model", linewidth=1.0)
+        ax.plot(x_inf, infer[:, j], label="state from robot", linewidth=1.0, alpha=0.85)
         ax.set_title(f"Column {j}")
         ax.grid(True, linestyle="--", alpha=0.3)
         ax.legend(fontsize=8)

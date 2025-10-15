@@ -37,14 +37,10 @@ class ModelType(enum.Enum):
 
 # The model always expects these images
 IMAGE_KEYS = (
-    "top_rgb",
-    "right_wrist_rgb",
-    "right_pole_rgb",
     "base_rgb",
-    "top_rgb",
     "right_wrist_rgb",
-    "right_pole_rgb",
-    "base_rgb",
+    "feng_rgb",
+    "bao_rgb",
 )
 
 # # 开始

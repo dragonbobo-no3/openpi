@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+"""
+python3 scripts/plot_action_obs.py --action /home/test/jemotor/openpi/logs/action_0819_2_cameras.csv --obs /home/test/jemotor/openpi/logs/obs_0819_2_cameras.csv --k 30
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
