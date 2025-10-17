@@ -131,23 +131,40 @@ def run_infer_and_save(args):
 
 def plot_saved(args):
     _ensure_dir(args.out)
-    data = np.load(args.inp, allow_pickle=True)
+    # 支持多条预测曲线
+    pred_files = getattr(args, 'pred_files', None)
+    pred_labels = getattr(args, 'pred_labels', None)
+    if pred_files is None:
+        pred_files = [args.inp]
+    if pred_labels is None or len(pred_labels) != len(pred_files):
+        pred_labels = [os.path.splitext(os.path.basename(f))[0] for f in pred_files]
+
+    # 读取GT
+    data = np.load(pred_files[0], allow_pickle=True)
     gt = data["gt_actions"]
-    pred = data["pred_actions"]  # [T, N, action_dim]
     infer_states = data["infer_states"]
-    T, N, A = pred.shape
+    T, N, A = data["pred_actions"].shape
     pred_start = getattr(args, 'pred_start', 0)
     stride = getattr(args, 'pred_len', N)
     pred_start = max(0, min(pred_start, T))
     stride = max(1, min(stride, N))
-    plot_pred = np.copy(gt)
-    infer_idx = []
-    t = pred_start
-    while t < T:
-        n = min(stride, T - t)
-        plot_pred[t:t+n] = pred[t, :n]
-        infer_idx.append(t)
-        t += n
+
+    # 生成所有预测曲线
+    plot_preds = []
+    infer_idxs = []
+    for pf in pred_files:
+        pdata = np.load(pf, allow_pickle=True)
+        pred = pdata["pred_actions"]
+        plot_pred = np.copy(gt)
+        infer_idx = []
+        t = pred_start
+        while t < T:
+            n = min(stride, T - t)
+            plot_pred[t:t+n] = pred[t, :n]
+            infer_idx.append(t)
+            t += n
+        plot_preds.append(plot_pred)
+        infer_idxs.append(infer_idx)
 
     fig, axes = plt.subplots(A, 1, figsize=(10, 4 * A), sharex=True)
     if not isinstance(axes, (list, np.ndarray)):
@@ -158,10 +175,12 @@ def plot_saved(args):
             gt[i] = gt[i-1] if i > 0 else gt[i+1]
     for i, ax in enumerate(axes):
         ax.plot(gt[:, i], label=f"GT action {i}", linestyle="--")
-        ax.plot(plot_pred[:, i], label=f"Pred action {i}")
-        # 高亮推理节点
-        if len(infer_idx) > 0:
-            ax.scatter(infer_idx, plot_pred[infer_idx, i], color="red", s=30, label="Inference node", zorder=5)
+        for j, plot_pred in enumerate(plot_preds):
+            ax.plot(plot_pred[:, i], label=f"{pred_labels[j]} pred", alpha=0.8)
+            # 高亮推理节点
+            idxs = infer_idxs[j]
+            if len(idxs) > 0:
+                ax.scatter(idxs, plot_pred[idxs, i], s=30, label=f"{pred_labels[j]} inf node", zorder=5)
         ax.set_ylabel(f"Action dim {i}")
         ax.set_title(f"GT vs Predicted Actions (dim {i})")
         ax.legend(loc="best")
@@ -186,19 +205,21 @@ def build_cli():
     p_run.add_argument("--root", default="/home/test/jemotor/jedata/test_0928_100_v2/")
     p_run.add_argument("--episode_id", type=int, default=54)
     p_run.add_argument("--default_prompt", default="pick up the circular chip and place it on the yellow pot")
-    p_run.add_argument("--out", default="./all_save85.npz")
+    p_run.add_argument("--out", default="./all_save2.npz")
     p_run.add_argument("--plot-after-run", action="store_true", help="After saving npz, immediately plot.")
     p_run.add_argument("--out-png", default="", help="If --plot-after-run, output PNG path (optional).")
     p_run.add_argument("--dpi", type=int, default=150)
     p_run.add_argument("--pred_start", type=int, default=0, help="Start frame for using pred_actions in plot.")
     p_run.set_defaults(func=run_infer_and_save)
     # plot
-    p_plot = subparsers.add_parser("plot", help="Plot GT vs Pred from saved .npz, with pred_start and pred_len option")
-    p_plot.add_argument("--inp", default="./all_save1.npz")
-    p_plot.add_argument("--out", default="./all_save1.png")
+    p_plot = subparsers.add_parser("plot", help="Plot GT vs Pred from saved .npz, with pred_start and pred_len option, and support multi pred_files")
+    p_plot.add_argument("--inp", default="./all_save2.npz")
+    p_plot.add_argument("--out", default="./all_save2.png")
     p_plot.add_argument("--dpi", type=int, default=150)
     p_plot.add_argument("--pred_start", type=int, default=20, help="Start frame for using pred_actions in plot.")
     p_plot.add_argument("--pred_len", type=int, default=50, help="Number of frames to use pred_actions in plot (-1 means to end)")
+    p_plot.add_argument("--pred_files", nargs="*", default=None, help="List of npz files for multiple pred curves")
+    p_plot.add_argument("--pred_labels", nargs="*", default=None, help="List of labels for pred curves")
     p_plot.set_defaults(func=plot_saved)
     return parser
 

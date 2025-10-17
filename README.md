@@ -333,3 +333,6 @@ right back CP02653000R4
 bbcp   -f -P 5 -s 64 -w 256M -v -r -z  alice@10.215.247.2:/jedata/jemotor/model/1009_pi05_test/10000 /home/test/jemotor/cloud_server/
 
 uv run scripts/plot_action_compare.py --pred_action /home/test/jemotor/openpi/logs/inference_sended_action_0930_4_cameras.csv --send_action /home/test/jemotor/openpi/logs/inference_state_at_action_0930_4_cameras.csv
+
+uv run scripts/evaluate_all.py plot --pred_files all_save1.npz all_save2.npz
+uv run scripts/compare_actions.py --file_a all_save1.npz --file_b all_save2.npz --out diff.png
