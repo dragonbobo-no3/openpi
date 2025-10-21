@@ -53,24 +53,51 @@ class AgileXInputs(transforms.DataTransformFn):
             if set(in_images) - set(self.EXPECTED_CAMERAS):
                 raise ValueError(f"Expected images to contain {self.EXPECTED_CAMERAS}, got {tuple(in_images)}")
 
-            top_image         = in_images["camera0"]
+            # Assume that base image always exists.
+            base_image = in_images["camera0"]
             right_wrist_image = in_images["camera1"]
-            right_pole_image  = in_images["camera2"]
-            base_image        = in_images["camera3"]
+            feng_image = in_images["camera2"]
+            bao_image = in_images["camera3"]
 
             images = {
-                "top_rgb":          top_image,
-                "right_wrist_rgb":  right_wrist_image,
-                "right_pole_rgb":   right_pole_image,
-                "base_rgb":         base_image,
+                "base_rgb": base_image,
+                "right_wrist_rgb": right_wrist_image,
+                "feng_rgb": feng_image,
+                "bao_rgb": bao_image,
             }
             image_masks = {
-                "top_rgb":          np.True_,
-                "right_wrist_rgb":  np.True_,
-                "right_pole_rgb":   np.True_,
-                "base_rgb":         np.True_,
+                "base_rgb": np.True_,
+                "right_wrist_rgb": np.True_,
+                "feng_rgb": np.True_,
+                "bao_rgb": np.True_,
             }
-        # use_images=False 时，images / image_mask 留空字典，保证下游拿到键不报错
+
+            # Add the extra images.
+            extra_image_names = {
+            }
+
+            # # 从这开始
+            # images = {
+            #     "right_wrist_rgb": right_wrist_image,
+            #     "right_pole_rgb": right_pole_image,
+            # }
+            # image_masks = {
+            #     "right_wrist_rgb": np.True_,
+            #     "right_pole_rgb": np.True_,
+            # }
+
+            # # Add the extra images.
+            # extra_image_names = {
+            # }
+            # # 到这结束
+
+            for dest, source in extra_image_names.items():
+                if source in in_images:
+                    images[dest] = in_images[source]
+                    image_masks[dest] = np.True_
+                else:
+                    images[dest] = np.zeros_like(base_image)
+                    image_masks[dest] = np.False_
 
         inputs = {
             "image": images,
@@ -196,11 +223,17 @@ def _decode_aloha(
 
 
 def _decode_state(state: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
+    # 支持 7 或 14 维输入
     if adapt_to_pi:
-        # Flip the joints.
-        state = _joint_flip_mask() * state
-        # Reverse the gripper transformation that is being applied by the Aloha runtime.
-        state[[6]] = _gripper_to_angular(state[[6]])
+        # 只处理前7维
+        state_main = state[:7]
+        state_rest = state[7:] if state.shape[0] > 7 else None
+        state_main = _joint_flip_mask() * state_main
+        state_main[[6]] = _gripper_to_angular(state_main[[6]])
+        if state_rest is not None:
+            state = np.concatenate([state_main, state_rest], axis=-1)
+        else:
+            state = state_main
     return state
 
 

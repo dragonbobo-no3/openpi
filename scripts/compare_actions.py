@@ -37,17 +37,31 @@ def main():
 
     print(f"Mean L2 error: {l2_error.mean():.4f}")
     print(f"Max L2 error: {l2_error.max():.4f}")
+    print(f"Max L2 error idx: {l2_error.argmax()}")
     print(f"Mean abs error (per dim): {abs_error.mean(axis=0)}")
 
-    plt.figure(figsize=(10,4))
-    plt.plot(l2_error, label='L2 error per frame')
-    plt.xlabel('Frame')
-    plt.ylabel('L2 error')
-    plt.title(f'Action L2 error: {os.path.basename(args.file_a)} vs {os.path.basename(args.file_b)}')
-    plt.legend()
+    # 所有action维度误差用subplot画在一张图
+    T, D = arr_a.shape
+    fig, axes = plt.subplots(D+1, 1, figsize=(10, 3*(D+1)), sharex=True)
+    # 保证axes为list
+    if not isinstance(axes, (list, np.ndarray)):
+        axes = [axes]
+    for d in range(D):
+        ax = axes[d]
+        ax.plot(abs_error[:, d], label=f'Abs error dim {d}')
+        ax.set_ylabel('Abs error')
+        ax.set_title(f'Action abs error (dim {d})')
+        ax.legend()
+    # 最后一张画总L2误差
+    ax_last = axes[-1]
+    ax_last.plot(l2_error, label='L2 error per frame', color='black')
+    ax_last.set_ylabel('L2 error')
+    ax_last.set_title('Total L2 error')
+    ax_last.legend()
+    ax_last.set_xlabel('Frame')
     plt.tight_layout()
     plt.savefig(args.out)
-    print(f"[PLOT] saved diff curve -> {args.out}")
+    print(f"[PLOT] saved all dims diff curve -> {args.out}")
     plt.show()
 
 if __name__ == "__main__":

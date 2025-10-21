@@ -56,6 +56,34 @@ class TransformedDataset(Dataset[T_co]):
         self._transform = _transforms.compose(transforms)
 
     def __getitem__(self, index: SupportsIndex) -> T_co:
+        data = self._dataset[index]
+        # 自动补齐 state_prev，仅同episode才用state-state_prev，否则用state-state
+        if "observation.state" in data and "episode_index" in data:
+            state = np.asarray(data["observation.state"])
+            ep_idx = data["episode_index"]
+            if index == 0:
+                state_prev = state.copy()
+                state_diff = state - state  # 首帧
+            else:
+                data_prev = self._dataset[index - 1]
+                if "episode_index" in data_prev and data_prev["episode_index"] == ep_idx:
+                    state_prev = np.asarray(data_prev["observation.state"])
+                    state_diff = state - state_prev
+                else:
+                    state_prev = state.copy()
+                    state_diff = state - state  # 跨episode
+            data["observation.state"] = np.concatenate([state, state_diff], axis=-1)
+        return self._transform(data)
+
+    def __len__(self) -> int:
+        return len(self._dataset)
+#改    
+class TransformedDatasetOld(Dataset[T_co]):
+    def __init__(self, dataset: Dataset, transforms: Sequence[_transforms.DataTransformFn]):
+        self._dataset = dataset
+        self._transform = _transforms.compose(transforms)
+
+    def __getitem__(self, index: SupportsIndex) -> T_co:
         return self._transform(self._dataset[index])
 
     def __len__(self) -> int:
@@ -137,7 +165,7 @@ def create_torch_dataset(
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
     if not data_config.root:
-        root="/jedata/test_0807a_modified"
+        root="/jedata/test_0928"
     else:
         root = data_config.root
     logging.info(f"Using dataset root: {root}")
