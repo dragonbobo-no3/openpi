@@ -336,3 +336,5 @@ uv run scripts/plot_action_compare.py --pred_action /home/test/jemotor/openpi/lo
 
 uv run scripts/evaluate_all.py plot --pred_files all_save1.npz all_save2.npz
 uv run scripts/compare_actions.py --file_a all_save1.npz --file_b all_save2.npz --out diff.png
+
+MPLBACKEND=TkAgg uv run scripts/plot_action_obs.py --action logs/action_0819_2_cameras.csv --obs logs/obs_0819_2_cameras.csv

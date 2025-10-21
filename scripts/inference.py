@@ -51,7 +51,6 @@ def inference_worker(
     policy = _policy_config.create_trained_policy(config, checkpoint_dir)
     logger_action = NumpyCSVLogger("logs/action_0819_2_cameras.csv", mode="w")
     logger_obs = NumpyCSVLogger("logs/obs_0819_2_cameras.csv", mode="w")
-    
     while True:
         item = in_q.get()
         if item is None:  # 收到结束标识
@@ -148,9 +147,8 @@ def main():
     action_queue = collections.deque()  # 存储当前动作序列
     waiting_for_infer = False
 
-    # robot.send_action_np(np.array([-7980, 20113, -2285, -7921, 37285,  1023,     0.]))
-    robot.send_action_np(np.array([0,0,0,0,0,0,0]))
-    time.sleep(60)
+    robot.send_action_np(np.array([-10862.0,30771.0,-21031.0,-302.0,36090.0,-22891.0,0.0]))
+    time.sleep(5)
     while i < kMaxTimeStamps:
         t0 = time.perf_counter()
 
@@ -167,9 +165,6 @@ def main():
         # 如果动作队列空了，且不在等待推理，则采集观测并发给子进程
         elif not waiting_for_infer:
             obs = robot.get_observation()
-            # print(f"state1: {obs['state']}")
-            state2 = robot.get_joint_state()['state']
-            # print(f"state2: {state2}")
             obs["state"] = obs["state"]
             obs["tokenized_prompt"] = tokenized[None]
             obs["tokenized_prompt_mask"] = mask[None]

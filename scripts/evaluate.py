@@ -9,6 +9,8 @@ uv run scripts/evaluate.py plot --inp ./temp.npz --out ./temp.png
 import os
 import time
 import argparse
+from typing import Sequence
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -47,16 +49,27 @@ def run_infer_and_save(args):
     if hasattr(policy, "reset"):
         policy.reset()
 
+    action_sequence_keys: Sequence[str] = ("action",)
     # 数据集 & episode
-    dataset = lerobot_dataset.LeRobotDataset(args.repo_id, root=args.root)
+    dataset = lerobot_dataset.LeRobotDataset(args.repo_id, root=args.root,delta_timestamps={
+            key: [t / args.fps for t in range(args.period)] for key in action_sequence_keys
+        },)
+    # print(dataset.__len__())
+    # print(dataset[177256]["observation.state"])
+    # print(dataset[177256]["index"])
+    # print(dataset[179790]["observation.state"])
+    # print(dataset[179790]["index"])
+    # print(dataset.__getitem__(177256).keys())
+    # print(dataset.__getitem__(179790)['action'])
+    # exit(1)
     episode_steps = _select_episode_indices(dataset, args.episode_id)
     gt_actions_list, pred_actions_list = [], []
     infer_times_ms = []
     infer_states_list = []  # ⭐ 记录每次推理时使用的 state
 
     for t, idx in enumerate(episode_steps):
-        step = dataset[idx]
-        gt_actions_list.append(np.asarray(step["action"]))
+        step = dataset.__getitem__(idx)
+        # gt_actions_list.append(np.asarray(step["action"]))
 
         # if t == 501:
         #     break
@@ -71,6 +84,7 @@ def run_infer_and_save(args):
             # 观测（这里的 state 就是“当次推理使用的 state”）
             cur_state = np.asarray(step["observation.state"])
             infer_states_list.append(cur_state)  # ⭐ 保存
+            print(cur_state)
             obs = {
                 "images": {
                     "camera0": step["observation.images.camera0"],
@@ -97,6 +111,7 @@ def run_infer_and_save(args):
 
             remain = len(episode_steps) - t
             block = np.asarray(result["actions"])[:min(args.period, remain)]
+            gt_actions_list.extend(np.asarray(step["action"]))
             pred_actions_list.extend(block)
             print(f"current step {t}/{len(episode_steps)}")
 
@@ -199,22 +214,23 @@ def build_cli():
     # run
     p_run = subparsers.add_parser("run", help="Run inference and save results to .npz")
     p_run.add_argument("--config", default="pi05_agileX")
-    p_run.add_argument("--checkpoint_dir", default="/home/test/jemotor/jemodel/pi05/1014_pi05_test/12500/")
+    p_run.add_argument("--checkpoint_dir", default="/home/kleist/Documents/Model/cloud_server/1014_pi05_test/35000/")
     p_run.add_argument("--repo_id", default="lerobot/test")
-    p_run.add_argument("--root", default="/home/test/jemotor/jedata/test_0928_100_v2/")
-    p_run.add_argument("--episode_id", type=int, default=86)
+    p_run.add_argument("--root", default="/home/kleist/Documents/Database/test_0928_100_v2/")
+    p_run.add_argument("--episode_id", type=int, default=32)
     p_run.add_argument("--period", type=int, default=50)
     p_run.add_argument("--default_prompt", default="pick up the circular chip and place it on the yellow pot")
-    p_run.add_argument("--out", default="./temp2.npz")
+    p_run.add_argument("--out", default="./temp6.npz")
     p_run.add_argument("--plot-after-run", action="store_true", help="After saving npz, immediately plot.")
     p_run.add_argument("--out-png", default="", help="If --plot-after-run, output PNG path (optional).")
     p_run.add_argument("--dpi", type=int, default=150)
+    p_run.add_argument("--fps", type=int, default=30)
     p_run.set_defaults(func=run_infer_and_save)
 
     # plot
     p_plot = subparsers.add_parser("plot", help="Plot GT vs Pred from saved .npz")
-    p_plot.add_argument("--inp", default="./temp1.npz")
-    p_plot.add_argument("--out", default="./temp1.png")
+    p_plot.add_argument("--inp", default="./temp6.npz")
+    p_plot.add_argument("--out", default="./temp6.png")
     p_plot.add_argument("--dpi", type=int, default=150)
     p_plot.set_defaults(func=plot_saved)
 
