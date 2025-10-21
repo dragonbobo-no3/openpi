@@ -53,51 +53,24 @@ class AgileXInputs(transforms.DataTransformFn):
             if set(in_images) - set(self.EXPECTED_CAMERAS):
                 raise ValueError(f"Expected images to contain {self.EXPECTED_CAMERAS}, got {tuple(in_images)}")
 
-        # Assume that base image always exists.
-        base_image = in_images["camera0"]
-        right_wrist_image = in_images["camera1"]
-        feng_image = in_images["camera2"]
-        bao_image = in_images["camera3"]
+            top_image         = in_images["camera0"]
+            right_wrist_image = in_images["camera1"]
+            right_pole_image  = in_images["camera2"]
+            base_image        = in_images["camera3"]
 
-        images = {
-            "base_rgb": base_image,
-            "right_wrist_rgb": right_wrist_image,
-            "feng_rgb": feng_image,
-            "bao_rgb": bao_image,
-        }
-        image_masks = {
-            "base_rgb": np.True_,
-            "right_wrist_rgb": np.True_,
-            "feng_rgb": np.True_,
-            "bao_rgb": np.True_,
-        }
-
-        # Add the extra images.
-        extra_image_names = {
-        }
-
-        # # 从这开始
-        # images = {
-        #     "right_wrist_rgb": right_wrist_image,
-        #     "right_pole_rgb": right_pole_image,
-        # }
-        # image_masks = {
-        #     "right_wrist_rgb": np.True_,
-        #     "right_pole_rgb": np.True_,
-        # }
-
-        # # Add the extra images.
-        # extra_image_names = {
-        # }
-        # # 到这结束
-
-        for dest, source in extra_image_names.items():
-            if source in in_images:
-                images[dest] = in_images[source]
-                image_masks[dest] = np.True_
-            else:
-                images[dest] = np.zeros_like(base_image)
-                image_masks[dest] = np.False_
+            images = {
+                "top_rgb":          top_image,
+                "right_wrist_rgb":  right_wrist_image,
+                "right_pole_rgb":   right_pole_image,
+                "base_rgb":         base_image,
+            }
+            image_masks = {
+                "top_rgb":          np.True_,
+                "right_wrist_rgb":  np.True_,
+                "right_pole_rgb":   np.True_,
+                "base_rgb":         np.True_,
+            }
+        # use_images=False 时，images / image_mask 留空字典，保证下游拿到键不报错
 
         inputs = {
             "image": images,
