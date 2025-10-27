@@ -92,6 +92,7 @@ def main():
     parser.add_argument("--cameras", type=str, required=False, help="camera config yaml", default=None)
     parser.add_argument("--max_relative_target", type=int, required=False, default=None)
     parser.add_argument("--use_degrees", action="store_true")
+    parser.add_argument("--mode", type=str, required=False, default="pose", help="inference mode")
     args = parser.parse_args()
 
     logger_send_action = NumpyCSVLogger("logs/inference_sended_action_0930_4_cameras.csv", mode="w")
@@ -134,6 +135,9 @@ def main():
     proc.start()
 
     robot.connect()
+    # For 'speed' mode we will augment obs['state'] from 7 -> 14 dims by
+    # appending the current-main minus previous-main as the last 7 dims.
+    prev_main = None
     i, sent_idx, recv_idx = 0, 0, 0
     kMaxTimeStamps = 600000
 
@@ -165,7 +169,21 @@ def main():
         # 如果动作队列空了，且不在等待推理，则采集观测并发给子进程
         elif not waiting_for_infer:
             obs = robot.get_observation()
-            obs["state"] = obs["state"]
+            # Ensure obs["state"] is a numpy array
+            state7 = np.asarray(obs.get("state"))
+            if args.mode == "speed":
+                # compute delta = current_main - prev_main (or zeros for first frame)
+                if prev_main is None:
+                    delta = np.zeros_like(state7)
+                else:
+                    try:
+                        delta = state7 - prev_main
+                    except Exception:
+                        delta = np.zeros_like(state7)
+                obs["state"] = np.concatenate([state7, delta], axis=-1)
+                prev_main = state7.copy()
+            else:
+                obs["state"] = state7
             obs["tokenized_prompt"] = tokenized[None]
             obs["tokenized_prompt_mask"] = mask[None]
             obs["token_ar_mask"] = None

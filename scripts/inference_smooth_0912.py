@@ -192,6 +192,7 @@ def main():
     proc.start()
 
     robot.connect()
+    prev_main = None
     i, sent_idx, recv_idx = 0, 0, 0
     kMaxTimeStamps = 600000
 
@@ -216,7 +217,21 @@ def main():
         if not waiting_for_infer and (action_step_counter >= args.action_steps or first):
             first = False
             obs = robot.get_observation()
-            obs["state"] = obs["state"]
+            # Ensure obs["state"] is a numpy array
+            state7 = np.asarray(obs.get("state"))
+            if args.mode == "speed":
+                # compute delta = current_main - prev_main (or zeros for first frame)
+                if prev_main is None:
+                    delta = np.zeros_like(state7)
+                else:
+                    try:
+                        delta = state7 - prev_main
+                    except Exception:
+                        delta = np.zeros_like(state7)
+                obs["state"] = np.concatenate([state7, delta], axis=-1)
+                prev_main = state7.copy()
+            else:
+                obs["state"] = state7
             obs["tokenized_prompt"] = tokenized[None]
             obs["tokenized_prompt_mask"] = mask[None]
             obs["token_ar_mask"] = None

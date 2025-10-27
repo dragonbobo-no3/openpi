@@ -66,6 +66,7 @@ def run_infer_and_save(args):
     gt_actions_list, pred_actions_list = [], []
     infer_times_ms = []
     infer_states_list = []  # ⭐ 记录每次推理时使用的 state
+    prev_main = None
 
     for t, idx in enumerate(episode_steps):
         step = dataset.__getitem__(idx)
@@ -83,6 +84,22 @@ def run_infer_and_save(args):
 
             # 观测（这里的 state 就是“当次推理使用的 state”）
             cur_state = np.asarray(step["observation.state"])
+            # Ensure obs["state"] is a numpy array
+            state7 = np.asarray(step["observation.state"])
+            if args.mode == "speed":
+                # compute delta = current_main - prev_main (or zeros for first frame)
+                if prev_main is None:
+                    delta = np.zeros_like(state7)
+                else:
+                    try:
+                        delta = state7 - prev_main
+                    except Exception:
+                        delta = np.zeros_like(state7)
+                obs = np.concatenate([state7, delta], axis=-1)
+                prev_main = state7.copy()
+            else:
+                obs = state7
+            cur_state = obs
             infer_states_list.append(cur_state)  # ⭐ 保存
             print(cur_state)
             obs = {
@@ -213,24 +230,25 @@ def build_cli():
 
     # run
     p_run = subparsers.add_parser("run", help="Run inference and save results to .npz")
-    p_run.add_argument("--config", default="pi05_agileX")
-    p_run.add_argument("--checkpoint_dir", default="/home/kleist/Documents/Model/cloud_server/1014_pi05_test/35000/")
+    p_run.add_argument("--config", default="pi05_agileX_speed")
+    p_run.add_argument("--checkpoint_dir", default="/home/test/jemotor/jemodel/pi05/1024_pi05_test/35000/")
     p_run.add_argument("--repo_id", default="lerobot/test")
-    p_run.add_argument("--root", default="/home/kleist/Documents/Database/test_0928_100_v2/")
-    p_run.add_argument("--episode_id", type=int, default=32)
+    p_run.add_argument("--root", default="/home/test/jemotor/jedata/test_0928_100_v2/")
+    p_run.add_argument("--episode_id", type=int, default=60)
     p_run.add_argument("--period", type=int, default=50)
     p_run.add_argument("--default_prompt", default="pick up the circular chip and place it on the yellow pot")
-    p_run.add_argument("--out", default="./temp6.npz")
+    p_run.add_argument("--out", default="./save2.npz")
     p_run.add_argument("--plot-after-run", action="store_true", help="After saving npz, immediately plot.")
     p_run.add_argument("--out-png", default="", help="If --plot-after-run, output PNG path (optional).")
     p_run.add_argument("--dpi", type=int, default=150)
     p_run.add_argument("--fps", type=int, default=30)
+    p_run.add_argument("--mode", required=False, type=str, default="speed")
     p_run.set_defaults(func=run_infer_and_save)
 
     # plot
     p_plot = subparsers.add_parser("plot", help="Plot GT vs Pred from saved .npz")
-    p_plot.add_argument("--inp", default="./temp6.npz")
-    p_plot.add_argument("--out", default="./temp6.png")
+    p_plot.add_argument("--inp", default="./save2.npz")
+    p_plot.add_argument("--out", default="./save2.png")
     p_plot.add_argument("--dpi", type=int, default=150)
     p_plot.set_defaults(func=plot_saved)
 
