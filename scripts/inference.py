@@ -151,8 +151,8 @@ def main():
     action_queue = collections.deque()  # 存储当前动作序列
     waiting_for_infer = False
 
-    robot.send_action_np(np.array([-10862.0,30771.0,-21031.0,-302.0,36090.0,-22891.0,0.0]))
-    time.sleep(5)
+    # robot.send_action_np(np.array([-10862.0,30771.0,-21031.0,-302.0,36090.0,-22891.0,0.0]))
+    # time.sleep(5)
     while i < kMaxTimeStamps:
         t0 = time.perf_counter()
 
