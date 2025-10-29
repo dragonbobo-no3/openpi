@@ -3,9 +3,142 @@ from typing import ClassVar
 
 import einops
 import numpy as np
+from PIL import Image
+import cv2
 
 from openpi import transforms
 
+
+def depth_rgb_u8_to_u16(depth_rgb_u8: np.ndarray, order: str = "HI_LO") -> np.ndarray:
+    """
+    把 (H,W,3) uint8（R/G存放高/低8位）还原为 (H,W) uint16 深度（单位通常为 mm）
+    """
+    assert depth_rgb_u8.dtype == np.uint8 and depth_rgb_u8.ndim == 3 and depth_rgb_u8.shape[2] >= 2
+    r = depth_rgb_u8[..., 0].astype(np.uint16)
+    g = depth_rgb_u8[..., 1].astype(np.uint16)
+    if order.upper() == "HI_LO":
+        depth_u16 = (r << 8) | g
+    elif order.upper() == "LO_HI":
+        depth_u16 = (g << 8) | r
+    else:
+        raise ValueError("order must be 'HI_LO' or 'LO_HI'")
+    return depth_u16  # (H,W) uint16
+
+def depth_u16_to_u8x3(
+    depth_u16: np.ndarray,
+    mode: str = "disparity",   # "disparity" 或 "log"
+    zmin_m: float = 0.2,
+    zmax_m: float = 4.0,
+) -> np.ndarray:
+    """
+    depth_u16: (H, W) 的 uint16 深度图（单位 mm）
+    返回: (H, W, 3) 的 uint8，可直接作为3通道图像使用（灰度复制到3通道）
+    """
+    assert depth_u16.dtype == np.uint16 and depth_u16.ndim == 2, "输入应为 (H,W) uint16"
+    d = depth_u16.astype(np.float32)  # 毫米
+    H, W = d.shape
+    valid = d > 0
+
+    # 将无效像素先临时设为最大深度，避免影响归一化；最后再置黑
+    zmin_mm = int(zmin_m * 1000)
+    zmax_mm = int(zmax_m * 1000)
+    tmp = d.copy()
+    tmp[~valid] = zmax_mm
+    tmp = np.clip(tmp, zmin_mm, zmax_mm)
+
+    if mode.lower() == "disparity":
+        # 视差映射：近处值更大 → 归一化后更亮
+        x = 1.0 / tmp
+        xmin, xmax = 1.0 / zmax_mm, 1.0 / zmin_mm  # 注意先大后小
+        y = (x - xmin) / (xmax - xmin + 1e-8)
+    elif mode.lower() == "log":
+        # 对数映射（米），并取反让近处更亮
+        tmp_m = tmp / 1000.0
+        x = np.log1p(tmp_m)
+        xmin, xmax = np.log1p(zmin_m), np.log1p(zmax_m)
+        y = 1.0 - (x - xmin) / (xmax - xmin + 1e-8)
+    else:
+        raise ValueError("mode 只能是 'disparity' 或 'log'")
+
+    y = np.clip(y, 0.0, 1.0)
+    vis8 = (y * 255.0 + 0.5).astype(np.uint8)  # 四舍五入
+    rgb = np.repeat(vis8[..., None], 3, axis=-1)  # 灰度复制到3通道
+    rgb[~valid] = 0  # 无效像素置黑
+    return rgb
+
+# 1) 读入深度（米），做裁剪与视差/对数映射
+def depth_to_unit(depth_m, zmin=0.2, zmax=4.0, mode="disparity"):
+    depth_m = np.array(depth_m, dtype=np.float32)
+    depth_m = np.clip(depth_m, zmin, zmax)
+    if mode == "disparity":
+        x = 1.0 / depth_m
+        xmin, xmax = 1.0 / zmax, 1.0 / zmin
+    else:  # "log"
+        x = np.log1p(depth_m)
+        xmin, xmax = np.log1p(zmin), np.log1p(zmax)
+    x = (x - xmin) / (xmax - xmin + 1e-8)  # [0,1]
+    return x
+
+
+# 2) 堆成3通道并转PIL
+def depth_to_rgb_like(depth_m):
+    u = depth_to_unit(depth_m)  # [H,W] in [0,1]
+    rgb = np.stack([u, u, u], axis=-1)  # [H,W,3]
+    rgb = (rgb * 255.0).astype(np.uint8)
+    return Image.fromarray(rgb)
+
+def save_depth_images(
+    base_image_depth,
+    out_raw_path="depth_raw.png",
+    out_vis_path="depth_vis.png",
+    zmin_m=0.2, zmax_m=4.0,          # 预览用的可视范围（米）
+    vis_mode="log",            # "disparity" 或 "log"
+    apply_colormap=False              # 伪彩色
+):
+    d = np.asarray(base_image_depth)
+
+    # 1) 统一成 uint16（单位 mm），用于无损保存
+    print(d.dtype)
+    if d.dtype.kind == "f":  # float: 认为是米
+        d_m = np.nan_to_num(d, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+        d_u16 = np.clip(d_m * 1000.0, 0, 65535).astype(np.uint16)
+    elif d.dtype == np.uint16:
+        d_u16 = d
+    else:
+        # 其它整数类型，按毫米处理并安全转为 uint16
+        d_u16 = np.clip(d.astype(np.int64), 0, 65535).astype(np.uint16)
+
+    # 1a) 无损深度图：16-bit PNG（灰度），注意普通看图工具可能显示很暗但数据是正确的
+    cv2.imwrite(out_raw_path, d_u16)
+
+    # 2) 预览图：把深度映射到 [0,255] 再可选伪彩
+    zmin_mm, zmax_mm = int(zmin_m * 1000), int(zmax_m * 1000)
+    tmp = d_u16.copy()
+    valid = tmp > 0
+    # 无效像素设为最大深度，避免造成无穷/NaN
+    tmp[~valid] = zmax_mm
+    tmp = np.clip(tmp, zmin_mm, zmax_mm).astype(np.float32)
+
+    if vis_mode == "disparity":
+        x = 1.0 / tmp  # 视差
+        xmin, xmax = 1.0 / zmax_mm, 1.0 / zmin_mm
+    else:  # "log"
+        x = np.log1p(tmp / 1000.0)  # log(1+米)
+        xmin, xmax = np.log1p(zmin_m), np.log1p(zmax_m)
+
+    x = (x - xmin) / (xmax - xmin + 1e-8)
+    x = np.clip(x, 0.0, 1.0)
+    vis8 = (x * 255.0).astype(np.uint8)
+
+    if apply_colormap:
+        vis_img = cv2.applyColorMap(vis8, cv2.COLORMAP_JET)
+        # 把无效像素染成黑色（可选）
+        vis_img[~valid] = (0, 0, 0)
+    else:
+        vis_img = vis8
+        vis_img[~valid] = 0
+
+    cv2.imwrite(out_vis_path, vis_img)
 
 def make_aloha_example() -> dict:
     """Creates a random input example for the Aloha policy."""
@@ -34,8 +167,10 @@ class AgileXInputs(transforms.DataTransformFn):
     adapt_to_pi: bool = True
     # ← 新增：是否处理相机图像。False 时不访问 data["images"]，也不调用 _decode_aloha。
     use_images: bool = True
+    use_depth: bool = False
 
-    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2", "camera3")
+    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2", "camera3", 'camera0_depth',
+                                                   'camera1_depth', 'camera2_depth', 'camera3_depth',)
 
     def __call__(self, data: dict) -> dict:
         # 仅在需要图像时才调用 _decode_aloha（其内部会访问 data["images"]）
@@ -75,6 +210,27 @@ class AgileXInputs(transforms.DataTransformFn):
             # Add the extra images.
             extra_image_names = {
             }
+
+            if self.use_depth:
+                base_image_depth = depth_rgb_u8_to_u16(in_images["camera0_depth"])
+                base_image_depth_processed = depth_u16_to_u8x3(base_image_depth, mode="disparity")
+                # print(base_image_depth.shape)
+                # print(base_image_depth)
+                # vis = ((base_image_depth.astype(np.float32) - base_image_depth[base_image_depth > 0].min())
+                #        / (base_image_depth.max() - base_image_depth[base_image_depth > 0].min() + 1e-8) * 255).astype(
+                #     np.uint8)
+                # cv2.imwrite("depth_linear_hilo.png", vis)
+                # cv2.imwrite("rgb.png", in_images["camera0"])
+                # print(type(in_images["camera0"]))
+                # print(np.asarray(in_images["camera0"]).dtype)
+                # exit(1)
+                bao_image_depth = depth_rgb_u8_to_u16(in_images["camera3_depth"])
+                bao_image_depth_processed = depth_u16_to_u8x3(bao_image_depth, mode="disparity")
+
+                images["base_depth"] = base_image_depth_processed
+                images["bao_depth"] = bao_image_depth_processed
+                image_masks["base_depth"] = np.True_
+                image_masks["bao_depth"] = np.True_
 
             # # 从这开始
             # images = {
@@ -155,7 +311,7 @@ def _gripper_to_angular(value):
 
     # This is the inverse of the angular to linear transformation inside the Interbotix code.
     def linear_to_radian(linear_position, arm_length, horn_radius):
-        value = (horn_radius**2 + linear_position**2 - arm_length**2) / (2 * horn_radius * linear_position)
+        value = (horn_radius ** 2 + linear_position ** 2 - arm_length ** 2) / (2 * horn_radius * linear_position)
         return np.arcsin(np.clip(value, -1.0, 1.0))
 
     # The constants are taken from the Interbotix code.
@@ -187,10 +343,10 @@ def _gripper_from_angular_inv(value):
 
 
 def _decode_aloha(
-    data: dict,
-    *,
-    adapt_to_pi: bool = False,
-    use_images: bool = True,   # ← 新增开关
+        data: dict,
+        *,
+        adapt_to_pi: bool = False,
+        use_images: bool = True,  # ← 新增开关
 ) -> dict:
     # --- state 始终解码 ---
     state = np.asarray(data["state"])
