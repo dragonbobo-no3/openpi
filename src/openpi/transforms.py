@@ -168,16 +168,37 @@ class Unnormalize(DataTransformFn):
         )
 
     def _unnormalize(self, x, stats: NormStats):
-        mean = pad_to_dim(stats.mean, x.shape[-1], axis=-1, value=0.0)
-        std = pad_to_dim(stats.std, x.shape[-1], axis=-1, value=1.0)
+        target = x.shape[-1]
+        mean = np.asarray(stats.mean)
+        std = np.asarray(stats.std)
+        # If stats are longer than the input, truncate to match input dims.
+        if mean.shape[-1] > target:
+            mean = mean[..., :target]
+        else:
+            mean = pad_to_dim(mean, target, axis=-1, value=0.0)
+        if std.shape[-1] > target:
+            std = std[..., :target]
+        else:
+            std = pad_to_dim(std, target, axis=-1, value=1.0)
         return x * (std + 1e-6) + mean
 
     def _unnormalize_quantile(self, x, stats: NormStats):
         assert stats.q01 is not None
         assert stats.q99 is not None
-        q01, q99 = stats.q01, stats.q99
-        if (dim := q01.shape[-1]) < x.shape[-1]:
-            return np.concatenate([(x[..., :dim] + 1.0) / 2.0 * (q99 - q01 + 1e-6) + q01, x[..., dim:]], axis=-1)
+        q01 = np.asarray(stats.q01)
+        q99 = np.asarray(stats.q99)
+        x_dim = x.shape[-1]
+        stat_dim = q01.shape[-1]
+        # If quantile stats are shorter than x, apply to the prefix and keep the rest of x unchanged.
+        if stat_dim < x_dim:
+            first = (x[..., :stat_dim] + 1.0) / 2.0 * (q99 - q01 + 1e-6) + q01
+            return np.concatenate([first, x[..., stat_dim:]], axis=-1)
+        # If quantile stats are longer than x, truncate stats to match x dims.
+        if stat_dim > x_dim:
+            q01_trunc = q01[..., :x_dim]
+            q99_trunc = q99[..., :x_dim]
+            return (x + 1.0) / 2.0 * (q99_trunc - q01_trunc + 1e-6) + q01_trunc
+        # Equal dims
         return (x + 1.0) / 2.0 * (q99 - q01 + 1e-6) + q01
 
 
