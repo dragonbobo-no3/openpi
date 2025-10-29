@@ -8,6 +8,8 @@ import logging
 import multiprocessing as mp
 import collections
 import yaml
+import random
+import os
 from scripts.numpy_logger import NumpyCSVLogger
 
 from openpi.policies import policy_config as _policy_config
@@ -136,6 +138,19 @@ def ema_transition(old_actions, new_actions, alpha=0.7):
         result.append(a)
     return result
 
+def set_seeds(seed):
+    os.environ.setdefault("PYTHONHASHSEED", str(seed))
+    random.seed(seed)
+    np.random.seed(seed)
+    try:
+        import torch
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
+    # JAX PRNG is handled when creating keys in the code that uses it.
+
 def main():
     parser = argparse.ArgumentParser(description="Inference script for AgileX follower robot")
     parser.add_argument("--port", type=str, required=True, help="port name")
@@ -146,12 +161,15 @@ def main():
     parser.add_argument("--cameras", type=str, required=False, help="camera config yaml", default=None)
     parser.add_argument("--max_relative_target", type=int, required=False, default=None)
     parser.add_argument("--use_degrees", action="store_true")
-    parser.add_argument("--action_steps", type=int, required=False, default=0, help="number of action steps to execute before next inference")
+    parser.add_argument("--action_steps", type=int, required=False, default=20, help="number of action steps to execute before next inference")
     parser.add_argument("--smooth_type", type=str, default="cubic", choices=["linear", "cubic", "quintic", "ema"], help="动作平滑策略: linear/cubic/quintic/ema")
     parser.add_argument("--ema_alpha", type=float, default=0.7, help="EMA平滑时新动作权重alpha,0~1")
     parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
     parser.add_argument("--mode", type=str, required=False, default="pose", help="inference mode")
+    parser.add_argument("--seed", type=int, required=False, default=10002)
     args = parser.parse_args()
+
+    set_seeds(args.seed)
 
     logger = NumpyCSVLogger("logs/smooth_0918.csv", mode="w")
     print_log = True
