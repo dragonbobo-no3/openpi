@@ -254,6 +254,13 @@ def main(config: _config.TrainConfig):
     batch = next(data_iter)
     logging.info(f"Initialized data loader:\n{training_utils.array_tree_to_info(batch)}")
 
+    # 打印 state 的均值和形状（JIT 之前，保证是 numpy 数组）
+    observation, actions = batch
+    state_np = np.array(observation.state)
+    print(f"observation.state shape: {state_np.shape}")
+    print(f"observation.state mean/std: {state_np.mean():.4f}, {state_np.std():.4f}")
+    print(f"observation.state sample: {state_np[0]}")
+    
     # Log images from first batch to sanity check.
     images_to_log = [
         wandb.Image(np.concatenate([np.array(img[i]) for img in batch[0].images.values()], axis=1))
