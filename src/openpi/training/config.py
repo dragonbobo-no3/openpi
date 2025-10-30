@@ -496,7 +496,6 @@ class LeRobotAgileXDataConfigSpeed(DataConfigFactory):
             root="/home/kleist/Documents/Database/test_0928_100_v2/",
         )
 
-
 @dataclasses.dataclass(frozen=True)
 class LeRobotLiberoDataConfig(DataConfigFactory):
     """
@@ -831,8 +830,9 @@ _CONFIGS = [
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/home/test/jemotor/jesource/pi05_base/params"),
         data=LeRobotAgileXDataConfigSpeed(
-            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_0928_100_v2/"),
-            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container."
+            assets=AssetsConfig(assets_dir="/home/test/jemotor/jedata/test_0928_100_v2_replaced/"),
+            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
+            use_speed=True,
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
