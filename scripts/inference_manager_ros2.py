@@ -186,10 +186,10 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ===== 子类新增参数 =====
-        self.declare_parameter('checkpoint_dir', '/home/kleist/Documents/Model/cloud_server/1017_pi05_test/15000/')
-        self.declare_parameter('policy_name', 'pi05_agileX')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1029_pi05_test/25000/')
+        self.declare_parameter('policy_name', 'pi05_agileX_depth')
         self.declare_parameter('inference_rate_hz', 30)  # 默认跟随 BaseManager 的 rate_hz
-        self.declare_parameter('cmd_joint_topic', '/joint_cmd')
+        self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
         self.declare_parameter('skip_if_no_subscriber', False)
@@ -246,8 +246,12 @@ class InferenceManager(BaseManager):
 
         while rclpy.ok() and not self._stop_evt.is_set():
             now = time.monotonic()
-            if now < next_t:
-                time.sleep(max(0.0, next_t - now))
+            sleep_time = next_t - now
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            else:
+                # 我们已经落后，跳过丢失的 ticks，重置 next_t
+                next_t = now
             next_t += period
 
             try:
@@ -322,7 +326,6 @@ class InferenceManager(BaseManager):
         js.header.stamp = self.get_clock().now().to_msg()  # 正确的 ROS2 时间戳
         js.name = list(self.cmd_joint_names)
         js.position = action  # 若需发送速度/力矩，可加 js.velocity / js.effort
-        # print(js.position)
         self.pub_joint_cmd.publish(js)
 
     # ---------- 观测构建 ----------

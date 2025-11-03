@@ -280,7 +280,7 @@ class BaseManager(Node):
         self.declare_parameter('color_topics_csv',
                                '/camera_01/color/image_raw,/camera_02/color/image_raw,/camera_03/color/image_raw,/camera_04/color/image_raw')
         self.declare_parameter('depth_topics_csv',
-                               '/camera_01/depth/image_raw,/camera_03/depth/image_raw,/camera_04/depth/image_raw')
+                               '/camera_01/depth/image_raw,/camera_02/depth/image_raw,/camera_03/depth/image_raw,/camera_04/depth/image_raw')
 
         # joint/tactile：多路 + 兼容单路
         self.declare_parameter('joint_state_topics', [])
@@ -298,9 +298,9 @@ class BaseManager(Node):
 
         # 窗口与目录
         self.declare_parameter('queue_seconds', 2.0)
-        self.declare_parameter('save_dir', os.path.expanduser('/home/kleist/Documents/manager_node_temp/'))
+        self.declare_parameter('save_dir', os.path.expanduser('./manager_node_temp/'))
         self.declare_parameter('session_name', '')
-        self.declare_parameter('save_depth', False)
+        self.declare_parameter('save_depth', True)
 
         # 其他
         self.declare_parameter('use_ros_time', True)

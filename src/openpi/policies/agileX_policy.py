@@ -13,16 +13,21 @@ def depth_rgb_u8_to_u16(depth_rgb_u8: np.ndarray, order: str = "HI_LO") -> np.nd
     """
     把 (H,W,3) uint8（R/G存放高/低8位）还原为 (H,W) uint16 深度（单位通常为 mm）
     """
-    assert depth_rgb_u8.dtype == np.uint8 and depth_rgb_u8.ndim == 3 and depth_rgb_u8.shape[2] >= 2
-    r = depth_rgb_u8[..., 0].astype(np.uint16)
-    g = depth_rgb_u8[..., 1].astype(np.uint16)
-    if order.upper() == "HI_LO":
-        depth_u16 = (r << 8) | g
-    elif order.upper() == "LO_HI":
-        depth_u16 = (g << 8) | r
+    # assert depth_rgb_u8.dtype == np.uint8 and depth_rgb_u8.ndim == 3 and depth_rgb_u8.shape[2] >= 2
+    if depth_rgb_u8.shape[2] == 3:
+        r = depth_rgb_u8[..., 0].astype(np.uint16)
+        g = depth_rgb_u8[..., 1].astype(np.uint16)
+        if order.upper() == "HI_LO":
+            depth_u16 = (r << 8) | g
+        elif order.upper() == "LO_HI":
+            depth_u16 = (g << 8) | r
+        else:
+            raise ValueError("order must be 'HI_LO' or 'LO_HI'")
+        return depth_u16  # (H,W) uint16
+    elif depth_rgb_u8.shape[2] == 1:
+        return depth_rgb_u8[..., 0]
     else:
-        raise ValueError("order must be 'HI_LO' or 'LO_HI'")
-    return depth_u16  # (H,W) uint16
+        raise ValueError("depth_rgb_u8 must be (H,W,3) uint8 or (H,W,1) uint16")
 
 def depth_u16_to_u8x3(
     depth_u16: np.ndarray,
