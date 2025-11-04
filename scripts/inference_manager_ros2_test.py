@@ -73,11 +73,11 @@ def _pack_depth_u16_to_rgb8(depth_u16: np.ndarray, order: str = "HI_LO", b_fill:
 
 
 def transform_ros2msg_2_np(
-    picks: List[Optional[Tuple[int, Any]]],
-    state_idx,
-    color_idx: List[int],
-    depth_idx: List[int],
-    pack_depth_2_rgb8: bool,
+        picks: List[Optional[Tuple[int, Any]]],
+        state_idx,
+        color_idx: List[int],
+        depth_idx: List[int],
+        pack_depth_2_rgb8: bool,
 ) -> Dict:
     obs_dict: Dict[str, Any] = {"state": None, "images": {}}
 
@@ -135,6 +135,7 @@ def transform_ros2msg_2_np(
             obs_dict["images"][f"camera{k}_depth"] = depth_chw
     return obs_dict
 
+
 def cubic_transition(old_actions, new_actions):
     """
     三次插值平滑衔接，返回平滑后的动作序列。
@@ -178,7 +179,7 @@ def cubic_transition(old_actions, new_actions):
     else:
         # 端点包含：t=0 -> old，t=1 -> new
         t = np.linspace(0.0, 1.0, n_interp, dtype=np.float32)  # [0,1]
-        h = (3 * t**2 - 2 * t**3)[:, None]                     # (n_interp,1)
+        h = (3 * t ** 2 - 2 * t ** 3)[:, None]  # (n_interp,1)
         blended = (1.0 - h) * old_arr[:n_interp] + h * new_arr[:n_interp]
         out = [row for row in blended]
 
@@ -189,11 +190,12 @@ def cubic_transition(old_actions, new_actions):
     # 返回 list[np.ndarray]（每帧 shape=(D,)）
     return [np.asarray(row, dtype=np.float32) for row in out]
 
+
 # ======================= 动作帧（带时间戳） =======================
 @dataclass
 class ActionFrame:
-    ts: float           # 该帧计划时间戳（秒，float）
-    a: np.ndarray       # (dof,) float32
+    ts: float  # 该帧计划时间戳（秒，float）
+    a: np.ndarray  # (dof,) float32
 
 
 # ======================= 主要节点 =======================
@@ -339,7 +341,7 @@ class InferenceManager(BaseManager):
                 obs = self._build_obs(picks)
 
                 # 规范化观测时间戳（秒）
-                obs_ts = self._normalize_ts_to_seconds(t_ref)
+                obs_ts = float(t_ref * 1e-9)
                 print(f"herwerseraserase:{t_ref}")
                 # 推理
                 t0 = time.monotonic()
@@ -367,7 +369,7 @@ class InferenceManager(BaseManager):
                 self._frames_since_update = 0
 
                 self.get_logger().debug(
-                    f"[infer] latency={(t1 - t0)*1000:.1f}ms, obs_ts={obs_ts:.6f}, new plan H={len(new_plan)}"
+                    f"[infer] latency={(t1 - t0) * 1000:.1f}ms, obs_ts={obs_ts:.6f}, new plan H={len(new_plan)}"
                 )
 
             except Exception as e:
@@ -395,7 +397,7 @@ class InferenceManager(BaseManager):
                 # 首先找不早于 old0_ts 的位置
                 k = int(np.searchsorted(new_ts, old0_ts, side='left'))
                 # 取最近（如果左边更近，就往前挪一位）
-                if k > 0 and (k >= len(new_ts) or abs(new_ts[k] - old0_ts) > abs(new_ts[k-1] - old0_ts)):
+                if k > 0 and (k >= len(new_ts) or abs(new_ts[k] - old0_ts) > abs(new_ts[k - 1] - old0_ts)):
                     k -= 1
                 k = max(0, min(k, len(new_plan) - 1))
 
