@@ -211,15 +211,15 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/kleist/Documents/Model/cloud_server/1017_pi05_test/15000/')
-        self.declare_parameter('policy_name', 'pi05_agileX')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1029_pi05_test/62500/')
+        self.declare_parameter('policy_name', 'pi05_agileX_depth')
 
         self.declare_parameter('publish_rate_hz', 30)
         self.declare_parameter('horizon', 50)
-        self.declare_parameter('replan_threshold_frames', 12)
+        self.declare_parameter('replan_threshold_frames', 20)
         self.declare_parameter('ema', 0.0)
 
-        self.declare_parameter('cmd_joint_topic', '/joint_cmd')
+        self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
         self.declare_parameter('skip_if_no_subscriber', False)
@@ -253,7 +253,7 @@ class InferenceManager(BaseManager):
         except Exception as e:
             self.get_logger().error(f"Failed to load policy: {e}\n{traceback.format_exc()}")
             raise
-
+        self.horizon = cfg.model.action_horizon
         # ---------- 共享状态 ----------
         self._dt = 1.0 / max(1.0, self.publish_rate_hz)
         self._future_actions: deque[ActionFrame] = deque(maxlen=self.horizon)  # 未来队列（含 ts）
@@ -296,6 +296,7 @@ class InferenceManager(BaseManager):
                 continue
 
             try:
+                # self.get_logger().info(f"Publishing next action at t={now:.6f} for tick={self._next_tick:.6f}")
                 action = self._pop_next_action()
                 if self.ema > 0.0 and self._last_action is not None:
                     action = (1.0 - self.ema) * action + self.ema * self._last_action
@@ -315,8 +316,7 @@ class InferenceManager(BaseManager):
                 fr = self._future_actions.popleft()
                 a = fr.a
             else:
-                self.get_logger().error("no future actions")
-                exit(1)
+                # self.get_logger().error("no future actions")
                 a = self._last_action if self._last_action is not None else self._safe_action
         return self._fit_action_dim(a)
 
@@ -325,6 +325,7 @@ class InferenceManager(BaseManager):
         while rclpy.ok() and not self._stop_evt.is_set():
             try:
                 need_replan = (self._frames_since_update >= self.replan_threshold_frames)
+                # need_replan = False
                 with self._future_lock:
                     queue_empty = (len(self._future_actions) == 0)
 
@@ -342,7 +343,6 @@ class InferenceManager(BaseManager):
 
                 # 规范化观测时间戳（秒）
                 obs_ts = float(t_ref * 1e-9)
-                print(f"herwerseraserase:{t_ref}")
                 # 推理
                 t0 = time.monotonic()
                 result = self.policy.infer(obs)
@@ -383,6 +383,7 @@ class InferenceManager(BaseManager):
         3) 前 fw 帧线性融合：old_tail[i] <-> new_plan[k+i]；其后直接采用 new_plan[k+fw:]
         4) 为保证发布节拍连续，输出队列的 ts 从 old_tail[0].ts 起按 dt 重新铺设
         """
+        self.get_logger().info(f"Fusing new plan with {len(new_plan)} frames into future queue {len(self._future_actions)} frames")
         with self._future_lock:
             if len(self._future_actions) == 0:
                 # 队列空或不需要融合：直接覆盖（但仍按 old_ts 铺设；此时用 new_plan[0].ts）
