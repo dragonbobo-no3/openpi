@@ -190,7 +190,7 @@ class InferenceManager(BaseManager):
         self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1029_pi05_test/62500/')
         self.declare_parameter('policy_name', 'pi05_agileX_depth')
         self.declare_parameter('inference_rate_hz', 30)  # 默认跟随 BaseManager 的 rate_hz
-        self.declare_parameter('cmd_joint_topic', '/joint_cmd')
+        self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
         self.declare_parameter('skip_if_no_subscriber', False)

@@ -534,3 +534,44 @@ class BaseManager(Node):
     # ---------- 关闭 ----------
     def destroy_node(self):
         return super().destroy_node()
+
+def main(args=None):
+    """
+    Simple entrypoint to run BaseManager for quick testing.
+    Usage:
+      python3 -m je_software.base_manager
+    """
+    import rclpy
+    try:
+        rclpy.init(args=args)
+    except Exception:
+        # rclpy.init may already be called by a launcher; ignore init errors
+        pass
+
+    node = None
+    try:
+        node = BaseManager()  # uses default node name 'manager'
+        node.get_logger().info("BaseManager started. Ctrl-C to exit.")
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        if node is not None:
+            node.get_logger().info("Keyboard interrupt, shutting down.")
+    except Exception as e:
+        if node is not None:
+            node.get_logger().error(f"Unhandled error in main: {e}")
+        else:
+            print(f"Unhandled error in main: {e}")
+    finally:
+        if node is not None:
+            try:
+                node.destroy_node()
+            except Exception:
+                pass
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()

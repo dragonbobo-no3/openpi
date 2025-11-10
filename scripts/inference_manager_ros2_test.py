@@ -19,6 +19,7 @@ from openpi.training import config as _config
 
 from sensor_msgs.msg import JointState, Image
 from std_msgs.msg import Header
+from numpy_logger import NumpyCSVLogger
 
 
 # ---------------------- 工具：图像解码 ----------------------
@@ -223,6 +224,7 @@ class InferenceManager(BaseManager):
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
         self.declare_parameter('skip_if_no_subscriber', False)
+        self.declare_parameter('dump_logs', True)
 
         p = self.get_parameter
         self.checkpoint_dir: str = str(p('checkpoint_dir').value)
@@ -235,6 +237,7 @@ class InferenceManager(BaseManager):
         self.cmd_joint_topic: str = str(p('cmd_joint_topic').value)
         self.cmd_joint_names: List[str] = list(p('cmd_joint_names').value)
         self.skip_if_no_sub: bool = bool(p('skip_if_no_subscriber').value)
+        self.dump_logs: bool = bool(p('dump_logs').value)   
 
         # ---------- 发布者 ----------
         reliable_qos = QoSProfile(
@@ -272,6 +275,18 @@ class InferenceManager(BaseManager):
 
         self._start_threads()
 
+        if self.dump_logs:
+            self.logger_action = NumpyCSVLogger(
+                "logs/action_0819_2_cameras.csv",
+                mode="w",
+                add_timestamp_to_filename=True,
+            )
+            self.logger_obs = NumpyCSVLogger(
+                "logs/obs_0819_2_cameras.csv",
+                mode="w",
+                add_timestamp_to_filename=True,
+            )
+
     # ---------- 线程 ----------
     def _start_threads(self):
         now = time.monotonic()
@@ -294,6 +309,9 @@ class InferenceManager(BaseManager):
             if sleep_s > 0:
                 time.sleep(min(sleep_s, 0.002))
                 continue
+            else:
+                # 我们已经落后，跳过丢失的 ticks，重置 next_t
+                self._next_tick = now
 
             try:
                 # self.get_logger().info(f"Publishing next action at t={now:.6f} for tick={self._next_tick:.6f}")
@@ -347,6 +365,13 @@ class InferenceManager(BaseManager):
                 t0 = time.monotonic()
                 result = self.policy.infer(obs)
                 t1 = time.monotonic()
+
+                if self.dump_logs:
+                    # 直接把 state / action 写入；不在此处自动加入行级时间戳
+                    self.logger_obs.log(obs['state'])
+                    for row in result['actions']:
+                        self.logger_action.log(row)
+
                 actions = result.get('actions', None)
                 if actions is None:
                     self.get_logger().warn("Policy returned no 'actions'")
