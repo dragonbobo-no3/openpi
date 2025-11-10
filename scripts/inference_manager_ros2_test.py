@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import traceback
+import json
 from typing import List, Tuple, Any, Dict, Optional
 from collections import deque
 import numpy as np
@@ -20,6 +21,8 @@ from openpi.training import config as _config
 from sensor_msgs.msg import JointState, Image
 from std_msgs.msg import Header
 from numpy_logger import NumpyCSVLogger
+
+from rclpy.time import Time
 
 
 # ---------------------- 工具：图像解码 ----------------------
@@ -199,6 +202,62 @@ class ActionFrame:
     a: np.ndarray  # (dof,) float32
 
 
+def load_jsonl(path: str, logger) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Read a JSONL file and return (right_list, left_list).
+
+    Each line should be a JSON object with a 'joints' list. Each joint entry is expected to
+    contain fields like 'topic', 'stamp_ns', 'name', 'position', 'velocity', 'effort'.
+    """
+    right_list: List[Dict] = []
+    left_list: List[Dict] = []
+    if not os.path.exists(path):
+        logger.error(f"File does not exist: {path}")
+        raise FileNotFoundError(path)
+    with open(path, 'r', encoding='utf-8') as f:
+        for line_no, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                js = json.loads(line)
+            except Exception as e:
+                logger.warning(f"Skipping invalid JSON at line {line_no+1}: {e}")
+                continue
+            joints = js.get('joints', [])
+            for j in joints:
+                topic = j.get('topic', '')
+                entry = {
+                    'stamp_ns': j.get('stamp_ns', 0),
+                    'name': j.get('name', []),
+                    'position': j.get('position', []),
+                    'velocity': j.get('velocity', []),
+                    'effort': j.get('effort', [])
+                }
+                if isinstance(topic, str) and (topic.endswith('right') or topic == '/joint_states_right'):
+                    right_list.append(entry)
+                elif isinstance(topic, str) and (topic.endswith('left') or topic == '/joint_states_left'):
+                    left_list.append(entry)
+    logger.info(f"Loaded {len(right_list)} right entries and {len(left_list)} left entries from {path}")
+    return right_list, left_list
+
+def make_jointstate_msg(self, entry: dict) -> JointState:
+    msg = JointState()
+    # set stamp if available
+    stamp_ns = int(entry.get('stamp_ns', 0))
+    try:
+        # Time requires non-negative integer nanoseconds
+        if stamp_ns > 0:
+            msg.header.stamp = Time(nanoseconds=stamp_ns).to_msg()
+    except Exception:
+        # ignore stamp if invalid
+        pass
+    msg.name = entry.get('name', [])
+    msg.position = [float(x) for x in entry.get('position', [])]
+    msg.velocity = [float(x) for x in entry.get('velocity', [])]
+    msg.effort = [float(x) for x in entry.get('effort', [])]
+    return msg
+    
 # ======================= 主要节点 =======================
 class InferenceManager(BaseManager):
     """
@@ -269,12 +328,7 @@ class InferenceManager(BaseManager):
         self._base_time: Optional[float] = None
         self._next_tick: Optional[float] = None
 
-        # 线程管理
-        self._stop_evt = threading.Event()
-        self._threads: List[threading.Thread] = []
-
-        self._start_threads()
-
+        # ---------- 日志 ----------
         if self.dump_logs:
             self.logger_action = NumpyCSVLogger(
                 "logs/action_0819_2_cameras.csv",
@@ -286,6 +340,29 @@ class InferenceManager(BaseManager):
                 mode="w",
                 add_timestamp_to_filename=True,
             )
+            self.logger_action_sended = NumpyCSVLogger(
+                "logs/action_sended_0819_2_cameras.csv",
+                mode="w",
+                add_timestamp_to_filename=True,
+            )
+
+        # # prepare storage for optional JSONL-loaded joint entries
+        # jsonl_path = '/home/test/jemotor/openpi/manager_node_temp/meta.jsonl'  # 修改为实际路径或通过参数传入
+        # self.right_list: List[Dict] = []
+        # self.left_list: List[Dict] = []
+        # if jsonl_path:
+        #     try:
+        #         r, l = load_jsonl(jsonl_path, self.get_logger())
+        #         self.right_list = r
+        #         self.left_list = l
+        #     except Exception as e:
+        #         self.get_logger().error(f"Failed to load joint states jsonl: {e}")
+
+        # 线程管理
+        self._stop_evt = threading.Event()
+        self._threads: List[threading.Thread] = []
+
+        self._start_threads()
 
     # ---------- 线程 ----------
     def _start_threads(self):
@@ -322,10 +399,72 @@ class InferenceManager(BaseManager):
                 self._last_action = action
 
                 # 已发布帧数 +1
+
+                if self.dump_logs:
+                    self.logger_action_sended.log(action)   
+
                 self._frames_since_update += 1
             except Exception as e:
                 self.get_logger().error(f"publish error: {e}\n{traceback.format_exc()}")
 
+            self._next_tick += self._dt
+
+    def _publish_loop_replay(self):
+        # Scheduled replay publish loop: mirror behavior of _publish_loop
+        assert self._base_time is not None and self._next_tick is not None
+        # ensure an index counter exists
+        if not hasattr(self, 'index'):
+            self.index = 0
+
+        while rclpy.ok() and not self._stop_evt.is_set():
+            now = time.monotonic()
+            sleep_s = self._next_tick - now
+            if sleep_s > 0:
+                time.sleep(min(sleep_s, 0.002))
+                continue
+            else:
+                # we're behind; reset next tick to avoid burst catch-up
+                self._next_tick = now
+
+            try:
+                # Publish right-side entry if present
+                if len(self.right_list) > 0:
+                    idx_r = self.index % len(self.right_list)
+                    entry_r = self.right_list[idx_r]
+                    # entry can be a dict (from jsonl) or an action array; handle both
+                    if isinstance(entry_r, dict):
+                        try:
+                            msg_r = make_jointstate_msg(self, entry_r)
+                            self.pub_joint_cmd.publish(msg_r)
+                        except Exception:
+                            # failed to convert/publish dict entry as JointState
+                            self.get_logger().error(f"Failed to publish right_list dict entry at index {idx_r}\n{traceback.format_exc()}")
+                    else:
+                        self._publish_joint(entry_r)
+
+                # (optional) left list handling left commented out to match prior behaviour
+                # if len(self.left_list) > 0:
+                #     idx_l = self.index % len(self.left_list)
+                #     msg_l = make_jointstate_msg(self, self.left_list[idx_l])
+                #     self.pub_left.publish(msg_l)
+
+                # advance counters
+                self.index += 1
+                self._frames_since_update += 1
+
+                # Determine whether we've published the last frame for both lists
+                done_r = (len(self.right_list) == 0) or (self.index >= len(self.right_list))
+                done_l = (len(self.left_list) == 0) or (self.index >= len(self.left_list))
+                if done_r and done_l:
+                    self.get_logger().info("Finished replay (non-loop). Shutting down node.")
+                    # signal stop and break
+                    self._stop_evt.set()
+                    break
+
+            except Exception as e:
+                self.get_logger().error(f"publish replay error: {e}\n{traceback.format_exc()}")
+
+            # schedule next tick
             self._next_tick += self._dt
 
     def _pop_next_action(self) -> np.ndarray:
@@ -399,6 +538,80 @@ class InferenceManager(BaseManager):
 
             except Exception as e:
                 self.get_logger().error(f"inference loop error: {e}\n{traceback.format_exc()}")
+
+    # ---------- 推理线程：按阈值触发 ----------
+    def _inference_loop_replay(self):
+        start_index = 0  # starting index for replay data
+        while rclpy.ok() and not self._stop_evt.is_set():
+            try:
+                # need_replan = (self._frames_since_update >= self.replan_threshold_frames)
+                need_replan = False
+                with self._future_lock:
+                    queue_empty = (len(self._future_actions) == 0)
+
+                if not (need_replan or queue_empty):
+                    time.sleep(0.002)
+                    continue
+
+                # 拿最新对齐观测
+                out = self.aligner.step()
+                if out is None:
+                    time.sleep(0.001)
+                    continue
+                t_ref, picks = out
+                obs = self._build_obs(picks)
+
+                # 规范化观测时间戳（秒）
+                obs_ts = float(t_ref * 1e-9)
+                # 推理
+                t0 = time.monotonic()
+                result = self.policy.infer(obs)
+                t1 = time.monotonic()
+
+                if self.dump_logs:
+                    # 直接把 state / action 写入；不在此处自动加入行级时间戳
+                    self.logger_obs.log(obs['state'])
+                    for row in result['actions']:
+                        self.logger_action.log(row)
+
+                # Use positions from right_list as replayed actions
+                end_index = min(start_index + self.horizon, len(self.right_list))
+                chunk = self.right_list[start_index:end_index]
+                start_index = end_index  # advance index for next replay
+                # extract position lists
+                actions = []
+                for entry in chunk:
+                    if isinstance(entry, dict):
+                        actions.append(entry.get('position', []))
+                    else:
+                        actions.append(entry)
+                if not actions:
+                    self.get_logger().warn("No replay actions available in chunk")
+                    time.sleep(0.01)
+                    continue
+                
+                act = np.asarray(actions, dtype=np.float32)
+                if act.ndim == 1:
+                    act = act[None, :]
+                if act.shape[0] != self.horizon:
+                    act = self._pad_or_clip(act, self.horizon)
+
+                # 构造带时间戳的新计划（第0帧 ts = obs_ts，等间隔 dt）
+                new_plan = self._make_new_plan_frames(act, obs_ts)
+
+                # 按时间戳对齐并融合 -> 更新未来队列
+                self._fuse_and_update_queue_by_ts(new_plan)
+
+                # 复位计数
+                self._frames_since_update = 0
+
+                self.get_logger().debug(
+                    f"[infer] latency={(t1 - t0) * 1000:.1f}ms, obs_ts={obs_ts:.6f}, new plan H={len(new_plan)}"
+                )
+
+            except Exception as e:
+                self.get_logger().error(f"inference loop error: {e}\n{traceback.format_exc()}")
+
 
     # ---------- 融合逻辑（基于时间戳对齐） ----------
     def _fuse_and_update_queue_by_ts(self, new_plan: List[ActionFrame]):

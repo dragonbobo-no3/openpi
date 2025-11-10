@@ -410,7 +410,7 @@ class BaseManager(Node):
         if not session_name:
             session_name = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.session_dir = os.path.join(self.save_dir, sanitize(session_name))
-        ensure_dir(self.session_dir)
+        # ensure_dir(self.session_dir)
 
         self.get_logger().info(f"Session: {self.session_dir}")
         self.get_logger().info(f"Color topics: {self.color_topics}")
