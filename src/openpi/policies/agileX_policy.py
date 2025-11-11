@@ -174,17 +174,19 @@ class AgileXInputs(transforms.DataTransformFn):
     use_images: bool = True
     use_depth: bool = False
 
-    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2", "camera3", 'camera0_depth',
-                                                   'camera1_depth', 'camera2_depth', 'camera3_depth',)
+    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2",
+                                                   "camera3", "camera4", "camera0_depth", 
+                                                   "camera2_depth", "camera3_depth")
 
     def __call__(self, data: dict) -> dict:
         # 仅在需要图像时才调用 _decode_aloha（其内部会访问 data["images"]）
         data = _decode_aloha(data, adapt_to_pi=self.adapt_to_pi, use_images=self.use_images)
 
-        # ---- state ----
+        # ---- state ---- 
+        # pose for now , for one arm: pose:0-7, velocity:7-14, effort:14-21
         state = transforms.pad_to_dim(data["state"], self.action_dim)
 
-        # ---- images（可选）----
+        # ---- images（可选）---- 
         images = {}
         image_masks = {}
 
@@ -198,18 +200,21 @@ class AgileXInputs(transforms.DataTransformFn):
             right_wrist_image = in_images["camera1"]
             feng_image = in_images["camera2"]
             bao_image = in_images["camera3"]
+            left_wrist_image = in_images["camera4"]
 
             images = {
                 "base_rgb": base_image,
                 "right_wrist_rgb": right_wrist_image,
                 "feng_rgb": feng_image,
                 "bao_rgb": bao_image,
+                "left_wrist_image": left_wrist_image,
             }
             image_masks = {
                 "base_rgb": np.True_,
                 "right_wrist_rgb": np.True_,
                 "feng_rgb": np.True_,
                 "bao_rgb": np.True_,
+                "left_wrist_image": np.True_,
             }
 
             # Add the extra images.
@@ -229,12 +234,16 @@ class AgileXInputs(transforms.DataTransformFn):
                 # print(type(in_images["camera0"]))
                 # print(np.asarray(in_images["camera0"]).dtype)
                 # exit(1)
+                feng_image_depth = depth_rgb_u8_to_u16(in_images["camera2_depth"])
+                feng_image_depth_processed = depth_u16_to_u8x3(feng_image_depth, mode="disparity")
                 bao_image_depth = depth_rgb_u8_to_u16(in_images["camera3_depth"])
                 bao_image_depth_processed = depth_u16_to_u8x3(bao_image_depth, mode="disparity")
 
                 images["base_depth"] = base_image_depth_processed
+                images["feng_depth"] = feng_image_depth_processed
                 images["bao_depth"] = bao_image_depth_processed
                 image_masks["base_depth"] = np.True_
+                image_masks["feng_depth"] = np.True_
                 image_masks["bao_depth"] = np.True_
 
             # # 从这开始
@@ -294,7 +303,7 @@ class AgileXOutputs(transforms.DataTransformFn):
 
 def _joint_flip_mask() -> np.ndarray:
     """Used to convert between aloha and pi joint angles."""
-    return np.array([1, -1, -1, 1, 1, 1, 1])
+    return np.array([1, -1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, 1, 1])
 
 
 def _normalize(x, min_val, max_val):
@@ -354,7 +363,7 @@ def _decode_aloha(
         use_images: bool = True,  # ← 新增开关
 ) -> dict:
     # --- state 始终解码 ---
-    state = np.asarray(data["state"])
+    state = np.asarray([*data["state"][:7], *data["state"][21:28]])
     state = _decode_state(state, adapt_to_pi=adapt_to_pi)
     data["state"] = state
 
@@ -384,17 +393,11 @@ def _decode_aloha(
 
 
 def _decode_state(state: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
-    # 支持 7 或 14 维输入
     if adapt_to_pi:
-        # 只处理前7维
-        state_main = state[:7]
-        state_rest = state[7:] if state.shape[0] > 7 else None
-        state_main = _joint_flip_mask() * state_main
-        state_main[[6]] = _gripper_to_angular(state_main[[6]])
-        if state_rest is not None:
-            state = np.concatenate([state_main, state_rest], axis=-1)
-        else:
-            state = state_main
+        # Flip the joints.
+        state = _joint_flip_mask() * state
+        # Reverse the gripper transformation that is being applied by the Aloha runtime.
+        state[[6, 13]] = _gripper_to_angular(state[[6, 13]])
     return state
 
 
@@ -402,12 +405,12 @@ def _encode_actions(actions: np.ndarray, *, adapt_to_pi: bool = False) -> np.nda
     if adapt_to_pi:
         # Flip the joints.
         actions = _joint_flip_mask() * actions
-        actions[:, [6]] = _gripper_from_angular(actions[:, [6]])
+        actions[:, [6, 13]] = _gripper_from_angular(actions[:, [6, 13]])
     return actions
 
 
 def _encode_actions_inv(actions: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
     if adapt_to_pi:
         actions = _joint_flip_mask() * actions
-        actions[:, [6]] = _gripper_from_angular_inv(actions[:, [6]])
+        actions[:, [6, 13]] = _gripper_from_angular_inv(actions[:, [6, 13]])
     return actions
