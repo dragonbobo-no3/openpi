@@ -335,10 +335,10 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             inputs=[
                 _transforms.RepackTransform(
                     {
-                        "images": {"camera0": "observation.images.camera0",
-                                   "camera1": "observation.images.camera1",
-                                   "camera2": "observation.images.camera2",
-                                   "camera3": "observation.images.camera3"},
+                        "images": {"camera0": "camera0",
+                                   "camera1": "camera1",
+                                   "camera2": "camera2",
+                                   "camera3": "camera3"},
                         "state": "observation.state",
                         "actions": "action",
                     }
@@ -372,7 +372,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_0928_100_v2",
+            root="/jedata/test_1112_trans",
         )
     
 @dataclasses.dataclass(frozen=True)
@@ -398,10 +398,10 @@ class LeRobotAgileXDataConfigDepth(DataConfigFactory):
             inputs=[
                 _transforms.RepackTransform(
                     {
-                        "images": {"camera0": "observation.images.camera0",
-                                   "camera1": "observation.images.camera1",
-                                   "camera2": "observation.images.camera2",
-                                   "camera3": "observation.images.camera3",
+                        "images": {"camera0": "camera0",
+                                   "camera1": "camera1",
+                                   "camera2": "camera2",
+                                   "camera3": "camera3",
                                    "camera0_depth": "observation.images.camera0_depth",
                                    "camera3_depth": "observation.images.camera3_depth",
                                    },
@@ -923,7 +923,7 @@ _CONFIGS = [
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/jedata/test_0928_100_v2/"),
+            assets=AssetsConfig(assets_dir="/jedata/test_1112_trans/"),
             default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},

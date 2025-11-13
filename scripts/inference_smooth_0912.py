@@ -62,63 +62,37 @@ def inference_worker(
         print(f"Step {idx}: infer time = {infer_time:.4f} seconds")
         out_q.put((idx, result["actions"]))
 
-def linear_transition(old_actions, new_actions):
+def _apply_transition(old_actions, new_actions, h_fn):
     """
-    线性插值平滑衔接，返回平滑后的动作序列。
-    old_actions: list[np.ndarray]，未执行的旧动作
-    new_actions: np.ndarray:shape=(N, action_dim)，新推理动作
-    返回:list[np.ndarray]，平滑衔接后的动作序列
+    通用 transition 应用器：对前 n_interp 个旧动作与新动作按权重 h(t) 做插值。
+    h_fn: 接受 t in (0,1) 返回权重 h(t) 的函数，interp = (1-h)*old + h*new。
+    返回 list[np.ndarray]
     """
     n_old = len(old_actions)
     n_interp = min(n_old, len(new_actions))
     result = []
     for i_interp in range(n_interp):
         t = (i_interp + 1) / (n_interp + 1)
-        interp_action = (1 - t) * old_actions[i_interp] + t * new_actions[i_interp]
+        h = float(h_fn(t))
+        interp_action = (1 - h) * old_actions[i_interp] + h * new_actions[i_interp]
         result.append(interp_action)
     for a in new_actions[n_interp:]:
         result.append(a)
     return result
+
+def linear_transition(old_actions, new_actions):
+    """线性插值：h(t)=t"""
+    return _apply_transition(old_actions, new_actions, lambda t: t)
+
 
 def cubic_transition(old_actions, new_actions):
-    """
-    三次插值平滑衔接，返回平滑后的动作序列。
-    old_actions: list[np.ndarray]，未执行的旧动作
-    new_actions: np.ndarrayshape=(N, action_dim)，新推理动作
-    返回:list[np.ndarray]，平滑衔接后的动作序列
-    """
-    n_old = len(old_actions)
-    n_interp = min(n_old, len(new_actions))
-    result = []
-    for i_interp in range(n_interp):
-        t = (i_interp + 1) / (n_interp + 1)
-        # 三次Hermite插值（ease in/out）：h(t) = 3t^2 - 2t^3
-        h = 3 * t**2 - 2 * t**3
-        interp_action = (1 - h) * old_actions[i_interp] + h * new_actions[i_interp]
-        result.append(interp_action)
-    for a in new_actions[n_interp:]:
-        result.append(a)
-    return result
+    """三次 Hermite ease-in/out：h(t)=3t^2-2t^3"""
+    return _apply_transition(old_actions, new_actions, lambda t: 3 * t**2 - 2 * t**3)
+
 
 def quintic_transition(old_actions, new_actions):
-    """
-    五次多项式插值平滑衔接，返回平滑后的动作序列。
-    old_actions: list[np.ndarray]，未执行的旧动作
-    new_actions: np.ndarray,shape=(N, action_dim)，新推理动作
-    返回:list[np.ndarray]，平滑衔接后的动作序列
-    """
-    n_old = len(old_actions)
-    n_interp = min(n_old, len(new_actions))
-    result = []
-    for i_interp in range(n_interp):
-        t = (i_interp + 1) / (n_interp + 1)
-        # 五次多项式插值：h(t) = 10t^3 - 15t^4 + 6t^5
-        h = 10 * t**3 - 15 * t**4 + 6 * t**5
-        interp_action = (1 - h) * old_actions[i_interp] + h * new_actions[i_interp]
-        result.append(interp_action)
-    for a in new_actions[n_interp:]:
-        result.append(a)
-    return result
+    """五次平滑：h(t)=10t^3-15t^4+6t^5"""
+    return _apply_transition(old_actions, new_actions, lambda t: 10 * t**3 - 15 * t**4 + 6 * t**5)
 
 def ema_transition(old_actions, new_actions, alpha=0.7):
     """

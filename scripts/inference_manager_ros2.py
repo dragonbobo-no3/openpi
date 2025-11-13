@@ -18,6 +18,7 @@ from openpi.training import config as _config
 
 from sensor_msgs.msg import JointState, Image
 from std_msgs.msg import Header
+from numpy_logger import NumpyCSVLogger
 
 
 def _dtype_and_channels(encoding: str):
@@ -186,13 +187,14 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ===== 子类新增参数 =====
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1029_pi05_test/25000/')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1029_pi05_test/62500/')
         self.declare_parameter('policy_name', 'pi05_agileX_depth')
         self.declare_parameter('inference_rate_hz', 30)  # 默认跟随 BaseManager 的 rate_hz
         self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
         self.declare_parameter('skip_if_no_subscriber', False)
+        self.declare_parameter('dump_logs', True)
 
         p = self.get_parameter
         self.checkpoint_dir: str = str(p('checkpoint_dir').value)
@@ -201,6 +203,7 @@ class InferenceManager(BaseManager):
         self.cmd_joint_topic: str = str(p('cmd_joint_topic').value)
         self.cmd_joint_names: List[str] = list(p('cmd_joint_names').value)
         self.skip_if_no_sub: bool = bool(p('skip_if_no_subscriber').value)
+        self.dump_logs: bool = bool(p('dump_logs').value)
 
         # ===== Publisher / 队列 / 策略先就绪，再启线程 =====
         reliable_qos = QoSProfile(
@@ -230,6 +233,19 @@ class InferenceManager(BaseManager):
 
         # 启动推理线程（只启一次）
         self.start_inference_thread()
+
+        # logger
+        if self.dump_logs:
+            self.logger_action = NumpyCSVLogger(
+                "logs/action_0819_2_cameras.csv",
+                mode="w",
+                add_timestamp_to_filename=True,
+            )
+            self.logger_obs = NumpyCSVLogger(
+                "logs/obs_0819_2_cameras.csv",
+                mode="w",
+                add_timestamp_to_filename=True,
+            )
 
     # ---------- 线程控制 ----------
     def start_inference_thread(self):
@@ -269,6 +285,11 @@ class InferenceManager(BaseManager):
                 obs = self._build_obs(picks)  # 封装后的观测构建
 
                 result = self.policy.infer(obs)
+                if self.dump_logs:
+                    # 直接把 state / action 写入；不在此处自动加入行级时间戳
+                    self.logger_obs.log(obs['state'])
+                    for row in result['actions']:
+                        self.logger_action.log(row)
                 actions = result.get('actions', None)
                 if actions is None:
                     self.get_logger().warn("Policy returned no 'actions' field.")
@@ -290,13 +311,14 @@ class InferenceManager(BaseManager):
                     else:
                         self.actions_queue.append(list(map(float, actions)))
 
-                self._publish_once()
+                # self._publish_once()
 
             except Exception as e:
                 self.get_logger().error(f"inference loop error: {e}\n{traceback.format_exc()}")
 
     # ---------- 发布一帧 ----------
     def _publish_once(self):
+        # self.get_logger().info(f"Publish once at {time.time()}")
         if not self.actions_queue:
             self.get_logger().warn("No actions queue.")
             return
