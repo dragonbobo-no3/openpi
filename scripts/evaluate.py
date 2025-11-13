@@ -104,10 +104,10 @@ def run_infer_and_save(args):
             print(cur_state)
             obs = {
                 "images": {
-                    "camera0": step["observation.images.camera0"],
-                    "camera1": step["observation.images.camera1"],
-                    "camera2": step["observation.images.camera2"],
-                    "camera3": step["observation.images.camera3"],
+                    "camera0": step["camera0"],
+                    "camera1": step["camera1"],
+                    "camera2": step["camera2"],
+                    "camera3": step["camera3"],
                 },
                 "image_masks": {
                     "camera0": np.array([True], dtype=bool),
@@ -230,11 +230,11 @@ def build_cli():
 
     # run
     p_run = subparsers.add_parser("run", help="Run inference and save results to .npz")
-    p_run.add_argument("--config", default="pi05_agileX_speed")
-    p_run.add_argument("--checkpoint_dir", default="/home/test/jemotor/jemodel/pi05/1024_pi05_test/35000/")
+    p_run.add_argument("--config", default="pi05_agileX")
+    p_run.add_argument("--checkpoint_dir", default="/home/test/jemotor/jemodel/pi05/1113_pi05_test/2500/")
     p_run.add_argument("--repo_id", default="lerobot/test")
-    p_run.add_argument("--root", default="/home/test/jemotor/jedata/test_0928_100_v2/")
-    p_run.add_argument("--episode_id", type=int, default=60)
+    p_run.add_argument("--root", default="/home/test/jemotor/jedata/test_1112_trans/")
+    p_run.add_argument("--episode_id", type=int, default=5)
     p_run.add_argument("--period", type=int, default=50)
     p_run.add_argument("--default_prompt", default="pick up the circular chip and place it on the yellow pot")
     p_run.add_argument("--out", default="./save2.npz")
