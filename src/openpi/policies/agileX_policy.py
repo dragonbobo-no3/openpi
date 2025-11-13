@@ -354,7 +354,7 @@ def _decode_aloha(
         use_images: bool = True,  # ← 新增开关
 ) -> dict:
     # --- state 始终解码 ---
-    state = np.asarray(data["state"])
+    state = np.asarray(data["state"][:7])
     state = _decode_state(state, adapt_to_pi=adapt_to_pi)
     data["state"] = state
 
