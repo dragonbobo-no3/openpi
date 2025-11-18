@@ -112,6 +112,47 @@ def ema_transition(old_actions, new_actions, alpha=0.7):
         result.append(a)
     return result
 
+def smooth_horizon(actions: np.ndarray, method: str = "none", window: int = 3, ema_alpha: float = 0.9):
+    """
+    Smooth predicted horizon (actions: shape (H, D)). Returns smoothed array same shape.
+    method: 'none'|'moving'|'median'|'ema'
+    window: integer window size for moving/median (should be odd for median/centered moving)
+    ema_alpha: smoothing factor for EMA (0-1)
+    """
+    if method == "none" or window <= 1 and method in ("moving", "median"):
+        return actions
+    actions = np.asarray(actions, dtype=float)
+    H, D = actions.shape
+    if method == "moving":
+        k = max(1, int(window))
+        if k == 1:
+            return actions
+        kernel = np.ones(k, dtype=float) / k
+        sm = np.zeros_like(actions)
+        for d in range(D):
+            sm[:, d] = np.convolve(actions[:, d], kernel, mode="same")
+        return sm
+    elif method == "median":
+        k = max(1, int(window))
+        if k == 1:
+            return actions
+        pad = k // 2
+        padded = np.pad(actions, ((pad, pad), (0, 0)), mode="edge")
+        sm = np.zeros_like(actions)
+        for t in range(H):
+            sm[t] = np.median(padded[t:t + k], axis=0)
+        return sm
+    elif method == "ema":
+        alpha = float(ema_alpha)
+        sm = np.zeros_like(actions)
+        s = actions[0].copy()
+        for t in range(H):
+            s = alpha * actions[t] + (1.0 - alpha) * s
+            sm[t] = s
+        return sm
+    else:
+        raise ValueError(f"Unknown horizon smoothing method: {method!r}")
+
 def set_seeds(seed):
     os.environ.setdefault("PYTHONHASHSEED", str(seed))
     random.seed(seed)
@@ -139,6 +180,10 @@ def main():
     parser.add_argument("--smooth_type", type=str, default="cubic", choices=["linear", "cubic", "quintic", "ema"], help="动作平滑策略: linear/cubic/quintic/ema")
     parser.add_argument("--ema_alpha", type=float, default=0.7, help="EMA平滑时新动作权重alpha,0~1")
     parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
+    # Horizon-level smoothing of the predicted action sequence (uses full predicted horizon)
+    parser.add_argument("--horizon_smooth", type=str, default="ema", choices=["none", "moving", "median", "ema"], help="对预测 horizon 进行时序平滑: none/moving/median/ema")
+    parser.add_argument("--horizon_window", type=int, default=1, help="窗口大小用于 moving/median 平滑（越大越平滑）。奇数优先")
+    parser.add_argument("--horizon_ema_alpha", type=float, default=0.9, help="horizon EMA alpha 用于 horizon_smooth=ema")
     parser.add_argument("--mode", type=str, required=False, default="pose", help="inference mode")
     parser.add_argument("--seed", type=int, required=False, default=10002)
     args = parser.parse_args()
@@ -258,6 +303,12 @@ def main():
             else:
                 start_idx = 0
             new_actions = action_vals[start_idx:]
+            # 对新推理得到的 horizon 做时序平滑（因为 horizon 是完整的未来序列，可以使用中心/非因果平滑）
+            try:
+                if args.horizon_smooth != "none" and len(new_actions) > 0:
+                    new_actions = smooth_horizon(np.asarray(new_actions), method=args.horizon_smooth, window=args.horizon_window, ema_alpha=args.horizon_ema_alpha)
+            except Exception as e:
+                logging.exception("horizon smoothing failed, falling back to raw predictions: %s", e)
 
             # 3. 平滑衔接（可通过参数切换）
             if args.smooth_type == "linear":
