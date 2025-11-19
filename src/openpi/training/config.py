@@ -328,7 +328,9 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     adapt_to_pi: bool = True
     # use speed mode
     use_speed: bool = False
-    
+
+    load_images: bool = False
+
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
         default=_transforms.Group(
@@ -350,7 +352,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = True) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = load_images) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
                                                use_images=use_images)],
@@ -372,7 +374,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_1112_trans",
+            root="/home/kleist/Documents/Database/test_1114/",
         )
     
 @dataclasses.dataclass(frozen=True)
@@ -923,7 +925,7 @@ _CONFIGS = [
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/jedata/test_1112_trans/"),
+            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_1114/"),
             default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
