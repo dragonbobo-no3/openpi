@@ -125,6 +125,8 @@ def main(config_name: str, max_frames: int | None = None):
 
     keys = ["state", "actions"]
     stats = {key: normalize.RunningStats() for key in keys}
+    if getattr(config.data, "effort_history", False):
+        keys.append("effort")
 
     # for b in data_loader:
     #     print(b.keys())

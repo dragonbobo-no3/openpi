@@ -88,6 +88,9 @@ class TransformedDataset(Dataset[T_co]):
 
     def __len__(self) -> int:
         return len(self._dataset)
+    @property
+    def num_frames(self) -> int:
+        return len(self._dataset.hf_dataset) if self._dataset.hf_dataset is not None else self._dataset.meta.total_frames
 
 
 class IterableTransformedDataset(IterableDataset[T_co]):

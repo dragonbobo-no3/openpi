@@ -21,6 +21,7 @@ import openpi.policies.agileX_policy as agileX_policy
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.tavla_policy as tavla_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -28,6 +29,7 @@ import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
+from openpi.shared.effort_type import EffortType
 
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
@@ -100,6 +102,11 @@ class DataConfig:
     root: str | None = None
 
     use_images: bool  = True
+
+    # Sequence of relative timestamps (in frames) for effort history. For example, (-20, -10, 0) means
+    # loading effort data from 20 frames ago, 10 frames ago, and the current frame.
+    # When empty, no effort history is loaded.
+    effort_history: Sequence[int] = (0,)
 
 
 class GroupFactory(Protocol):
@@ -514,6 +521,109 @@ class LeRobotAgileXDataConfigNewForm(DataConfigFactory):
         )
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotTavlaDataConfig(DataConfigFactory):
+    # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
+    # Gripper dimensions will remain in absolute values.
+    use_delta_joint_actions: bool = True
+    # If provided, will be injected into the input data if the "prompt" key is not present.
+    default_prompt: str | None = None
+    # If true, will pad the dim of norm_stats to 32, so pi0 could compatible with pi0_fast's norm_stats.
+    padding_stat: bool = False
+
+    adapt_to_pi: bool = True
+
+    load_images: bool = True
+
+    use_depth: bool = True
+
+    # Sequence of relative timestamps (in frames) for effort history. For example, (-20, -10, 0) means
+    # loading effort data from 20 frames ago, 10 frames ago, and the current frame.
+    # If empty, will not load effort data.
+    effort_history: Sequence[int] = ()
+
+    # Repack transforms.
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(default=_transforms.Group())
+    # Action keys that will be used to read the action sequence from the dataset.
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    def __post_init__(self):
+        images = {
+            "cam_high": "observation.images.cam_high",
+            "cam_left_wrist": "observation.images.cam_left_wrist",
+            "cam_right_wrist": "observation.images.cam_right_wrist",
+        }
+        repack_dict = {
+            "images": images,
+            "state": "observation.state",
+            "actions": "action",
+        }
+        if self.default_prompt is None:
+            repack_dict["prompt"] = "prompt"
+        if self.effort_history:
+            repack_dict["effort"] = "observation.effort"
+        object.__setattr__(
+            self,
+            "repack_transforms",
+            _transforms.Group(
+                inputs=[
+                    _transforms.RepackTransform(
+                        repack_dict
+                    )
+                ]
+            ),
+        )
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        data_transforms = _transforms.Group(
+            inputs=[
+                tavla_policy.TavlaInputs(
+                    action_dim=model_config.action_dim,
+                )
+            ],
+            outputs=[tavla_policy.TavlaOutputs()],
+        )
+        if self.use_delta_joint_actions:
+            delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+
+        if self.default_prompt and isinstance(self.repo_id, list):
+            raise ValueError("Using default prompt when using multiple dataset is incorrect.")
+
+        model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs),
+            repack_transforms=self.repack_transforms,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+            effort_history=self.effort_history,
+            prompt_from_task=(self.default_prompt is None),
+        )
+
+    # 处理多数据集时的情况，此时asset_id=repo_id是一个list，norm_stats直接存在assets_base_dir/config_name下
+    def _load_norm_stats(
+        self, assets_dir: epath.Path, asset_id: str | list[str] | None
+    ) -> dict[str, _transforms.NormStats] | None:
+        if asset_id is None:
+            return None
+
+        try:
+            data_assets_dir = str(assets_dir / asset_id)
+            all_stats = _normalize.load(_download.maybe_download(data_assets_dir))
+            logging.info(f"Loaded norm stats from {data_assets_dir}")
+            return all_stats
+        except FileNotFoundError:
+            logging.warning(f"Norm stats not found in {data_assets_dir}, skipping.")
+            return None
+
+
+
+@dataclasses.dataclass(frozen=True)
 class LeRobotLiberoDataConfig(DataConfigFactory):
     """
     This config is used to configure transforms that are applied at various parts of the data pipeline.
@@ -783,10 +893,44 @@ class TrainConfig:
     def __post_init__(self) -> None:
         if self.resume and self.overwrite:
             raise ValueError("Cannot resume and overwrite at the same time.")
+        if (getattr(self.data, "effort_history", False)
+            and self.model.effort_type in (EffortType.LLM_HIS_C, EffortType.EXPERT_HIS_C,
+                                           EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT)):
+            object.__setattr__(
+                self.model,
+                "effort_dim_in",
+                self.model.effort_dim * len(self.data.effort_history),
+            )
+        elif getattr(self.data, "effort_history", False):
+            object.__setattr__(
+                self.model,
+                "effort_dim_in",
+                self.model.effort_dim,
+            )
 
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
+    TrainConfig(
+        name="pi0_lora_effort_history",
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+                            effort_type=EffortType.EXPERT_HIS_C),
+        data=LeRobotTavlaDataConfig(
+            repo_id="org/repo",
+            effort_history=tuple((4 * i - 36 for i in range(10))),  # sample 10 frames in 2s
+            default_prompt="do something",
+
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("s3://openpi-assets/checkpoints/pi0_base/params"),
+        num_train_steps=30_000,
+        freeze_filter=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
     #
     # Finetune AgileX configs.
     #
