@@ -45,6 +45,7 @@ def inference_worker(
     out_q: mp.Queue,
     config,
     checkpoint_dir,
+    args,
 ):
 
     # 1. 只在该进程里加载一次模型 / CUDA
@@ -55,12 +56,57 @@ def inference_worker(
         if item is None:            # 收到结束标识
             del policy
             break
-        idx, obs = item       # idx 用来对应主进程里的顺序
+        # item expected to be (idx, obs, anchor) where anchor may be None
+        if isinstance(item, tuple) and len(item) == 3:
+            idx, obs, anchor = item
+        elif isinstance(item, tuple) and len(item) == 2:
+            idx, obs = item
+            anchor = None
+        else:
+            # unexpected message, skip
+            continue
         start_time = time.time()
         result = policy.infer(obs)
         infer_time = time.time() - start_time
         print(f"Step {idx}: infer time = {infer_time:.4f} seconds")
-        out_q.put((idx, result["actions"]))
+        actions = result.get("actions")
+        # perform horizon-level smoothing and optional QP optimization in worker
+        try:
+            if actions is not None:
+                arr = np.asarray(actions, dtype=float)
+                if arr.ndim == 1:
+                    arr = arr[None, :]
+                H, D = arr.shape
+                # assume last column is gripper; exclude it from horizon-level processing
+                if D >= 2:
+                    body = arr[:, :-1]
+                    grip = arr[:, -1:]
+                else:
+                    body = arr
+                    grip = None
+
+                # smooth only the body (joints)
+                if getattr(args, "horizon_smooth", "none") != "none" and body.size > 0:
+                    try:
+                        body = smooth_horizon(body, method=args.horizon_smooth, window=args.horizon_window, ema_alpha=args.horizon_ema_alpha)
+                    except Exception:
+                        logging.exception("worker horizon smoothing failed")
+
+                # QP optimization only on body
+                if getattr(args, "qp_lambda_acc", 0.0) and args.qp_lambda_acc > 0 and body.size > 0:
+                    try:
+                        body = optimize_horizon_qp(body, lambda_acc=args.qp_lambda_acc, velocity_limit=args.qp_velocity_limit, anchor=anchor)
+                    except Exception as e:
+                        logging.exception("worker qp optimization failed: %s", e)
+
+                # recombine
+                if grip is None:
+                    actions = body
+                else:
+                    actions = np.concatenate([body, grip], axis=1)
+        except Exception as e:
+            logging.exception("worker horizon postprocessing failed, falling back to raw actions: %s", e)
+        out_q.put((idx, actions))
 
 def _apply_transition(old_actions, new_actions, h_fn):
     """
@@ -112,6 +158,47 @@ def ema_transition(old_actions, new_actions, alpha=0.7):
         result.append(a)
     return result
 
+def smooth_horizon(actions: np.ndarray, method: str = "none", window: int = 3, ema_alpha: float = 0.9):
+    """
+    Smooth predicted horizon (actions: shape (H, D)). Returns smoothed array same shape.
+    method: 'none'|'moving'|'median'|'ema'
+    window: integer window size for moving/median (should be odd for median/centered moving)
+    ema_alpha: smoothing factor for EMA (0-1)
+    """
+    if method == "none" or window <= 1 and method in ("moving", "median"):
+        return actions
+    actions = np.asarray(actions, dtype=float)
+    H, D = actions.shape
+    if method == "moving":
+        k = max(1, int(window))
+        if k == 1:
+            return actions
+        kernel = np.ones(k, dtype=float) / k
+        sm = np.zeros_like(actions)
+        for d in range(D):
+            sm[:, d] = np.convolve(actions[:, d], kernel, mode="same")
+        return sm
+    elif method == "median":
+        k = max(1, int(window))
+        if k == 1:
+            return actions
+        pad = k // 2
+        padded = np.pad(actions, ((pad, pad), (0, 0)), mode="edge")
+        sm = np.zeros_like(actions)
+        for t in range(H):
+            sm[t] = np.median(padded[t:t + k], axis=0)
+        return sm
+    elif method == "ema":
+        alpha = float(ema_alpha)
+        sm = np.zeros_like(actions)
+        s = actions[0].copy()
+        for t in range(H):
+            s = alpha * actions[t] + (1.0 - alpha) * s
+            sm[t] = s
+        return sm
+    else:
+        raise ValueError(f"Unknown horizon smoothing method: {method!r}")
+
 def set_seeds(seed):
     os.environ.setdefault("PYTHONHASHSEED", str(seed))
     random.seed(seed)
@@ -124,6 +211,73 @@ def set_seeds(seed):
     except Exception:
         pass
     # JAX PRNG is handled when creating keys in the code that uses it.
+
+def _build_D2(H: int) -> np.ndarray:
+    """Construct second-difference matrix D2 of shape (H-2, H).
+    (D2 a)[t] = a[t+2] - 2 a[t+1] + a[t]
+    """
+    if H < 3:
+        return np.zeros((0, H), dtype=float)
+    D2 = np.zeros((H - 2, H), dtype=float)
+    for i in range(H - 2):
+        D2[i, i] = 1.0
+        D2[i, i + 1] = -2.0
+        D2[i, i + 2] = 1.0
+    return D2
+
+
+def optimize_horizon_qp(new_actions: np.ndarray, lambda_acc: float = 0.1, velocity_limit: float = 0.0, anchor: np.ndarray | None = None) -> np.ndarray:
+    """
+    Light-weight QP-style optimizer: minimize 0.5||a - a_ref||^2 + 0.5 * lambda_acc * ||D2 a||^2
+    Solves per-joint linear system: (I + lambda_acc * D2^T D2) a = a_ref
+    new_actions: (H, D)
+    velocity_limit: if >0, post-clamp per-step deltas to [-velocity_limit, velocity_limit]
+    anchor: optional previous executed action (1D array of length D) used to bias first element
+    Returns optimized actions (H, D)
+    """
+    a_ref = np.asarray(new_actions, dtype=float)
+    H, D = a_ref.shape
+    if H == 0:
+        return a_ref
+    D2 = _build_D2(H)
+    if lambda_acc <= 0 or D2.size == 0:
+        sol = a_ref.copy()
+    else:
+        M = np.eye(H, dtype=float)
+        # add regularizer: lambda_acc * D2^T D2
+        reg = lambda_acc * (D2.T @ D2)
+        A = M + reg
+        # For numerical stability, add small diag jitter
+        A += np.eye(H) * 1e-8
+        sol = np.zeros_like(a_ref)
+        # Solve per joint
+        for j in range(D):
+            b = a_ref[:, j]
+            try:
+                x = np.linalg.solve(A, b)
+            except np.linalg.LinAlgError:
+                x = np.linalg.lstsq(A, b, rcond=None)[0]
+            sol[:, j] = x
+    # Optional simple post-processing: clamp per-step velocity
+    if velocity_limit and velocity_limit > 0.0:
+        # if anchor provided, use it as previous value; else use sol[0]
+        prev = None
+        if anchor is not None:
+            prev = np.asarray(anchor, dtype=float)
+        else:
+            prev = sol[0].copy()
+        # enforce on each joint independently
+        for j in range(D):
+            val = prev[j]
+            for t in range(H):
+                delta = sol[t, j] - val
+                if delta > velocity_limit:
+                    delta = velocity_limit
+                elif delta < -velocity_limit:
+                    delta = -velocity_limit
+                val = val + delta
+                sol[t, j] = val
+    return sol
 
 def main():
     parser = argparse.ArgumentParser(description="Inference script for AgileX follower robot")
@@ -139,7 +293,16 @@ def main():
     parser.add_argument("--smooth_type", type=str, default="cubic", choices=["linear", "cubic", "quintic", "ema"], help="动作平滑策略: linear/cubic/quintic/ema")
     parser.add_argument("--ema_alpha", type=float, default=0.7, help="EMA平滑时新动作权重alpha,0~1")
     parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
+    # Horizon-level smoothing of the predicted action sequence (uses full predicted horizon)
+    parser.add_argument("--horizon_smooth", type=str, default="none", choices=["none", "moving", "median", "ema"], help="对预测 horizon 进行时序平滑: none/moving/median/ema")
+    parser.add_argument("--horizon_window", type=int, default=1, help="窗口大小用于 moving/median 平滑（越大越平滑）。奇数优先")
+    parser.add_argument("--horizon_ema_alpha", type=float, default=0.9, help="horizon EMA alpha 用于 horizon_smooth=ema")
+    # QP-style online optimizer options
+    parser.add_argument("--qp_lambda_acc", type=float, default=0.0, help="二阶差分加速惩罚系数（>=0），qp优化时使用。0 表示禁用")
+    parser.add_argument("--qp_velocity_limit", type=float, default=0.0, help="可选的每步最大速度（动作单位/step），>0 则启用简单束缚后处理")
+    # speed or pose
     parser.add_argument("--mode", type=str, required=False, default="pose", help="inference mode")
+    # jitter seed
     parser.add_argument("--seed", type=int, required=False, default=10002)
     args = parser.parse_args()
 
@@ -179,7 +342,7 @@ def main():
 
     proc = ctx.Process(
         target=inference_worker,
-        args=(in_q, out_q, config, checkpoint_dir)
+        args=(in_q, out_q, config, checkpoint_dir, args)
     )
     proc.daemon = True
     proc.start()
@@ -229,8 +392,15 @@ def main():
             obs["tokenized_prompt_mask"] = mask[None]
             obs["token_ar_mask"] = None
             obs["token_loss_mask"] = None
+            # send anchor (first pending action) to worker so it can align/anchor optimization
+            anchor = None
+            if len(action_queue) > 0:
+                try:
+                    anchor = np.asarray(action_queue[0], dtype=float)
+                except Exception:
+                    anchor = None
             try:
-                in_q.put_nowait((sent_idx, obs))
+                in_q.put_nowait((sent_idx, obs, anchor))
                 sent_idx += 1
                 waiting_for_infer = True
                 action_step_counter = 0
@@ -258,6 +428,56 @@ def main():
             else:
                 start_idx = 0
             new_actions = action_vals[start_idx:]
+            # 对新推理得到的 horizon 做时序平滑（因为 horizon 是完整的未来序列，可以使用中心/非因果平滑）
+            try:
+                if args.horizon_smooth != "none" and len(new_actions) > 0:
+                    arr = np.asarray(new_actions, dtype=float)
+                    if arr.ndim == 1:
+                        arr = arr[None, :]
+                    H, D = arr.shape
+                    if D >= 2:
+                        body = arr[:, :-1]
+                        grip = arr[:, -1:]
+                    else:
+                        body = arr
+                        grip = None
+                    if body.size > 0:
+                        try:
+                            body = smooth_horizon(body, method=args.horizon_smooth, window=args.horizon_window, ema_alpha=args.horizon_ema_alpha)
+                        except Exception:
+                            logging.exception("main horizon smoothing failed")
+                    new_actions = np.concatenate([body, grip], axis=1) if grip is not None else body
+            except Exception as e:
+                logging.exception("horizon smoothing failed, falling back to raw predictions: %s", e)
+
+            # 可选：对整个 horizon 做 QP-style 优化以最小化二阶差分（加速度）
+            try:
+                if args.qp_lambda_acc and args.qp_lambda_acc > 0 and len(new_actions) > 0:
+                    # anchor 使用当前队列第一个动作（若有）以保证前端对齐
+                    anchor = None
+                    if len(old_actions) > 0:
+                        try:
+                            anchor = np.asarray(old_actions[0], dtype=float)
+                        except Exception:
+                            anchor = None
+                    arr = np.asarray(new_actions, dtype=float)
+                    if arr.ndim == 1:
+                        arr = arr[None, :]
+                    H, D = arr.shape
+                    if D >= 2:
+                        body = arr[:, :-1]
+                        grip = arr[:, -1:]
+                    else:
+                        body = arr
+                        grip = None
+                    if body.size > 0:
+                        try:
+                            body = optimize_horizon_qp(body, lambda_acc=args.qp_lambda_acc, velocity_limit=args.qp_velocity_limit, anchor=anchor)
+                        except Exception as e:
+                            logging.exception("main qp optimization failed: %s", e)
+                    new_actions = np.concatenate([body, grip], axis=1) if grip is not None else body
+            except Exception as e:
+                logging.exception("qp horizon optimization failed, falling back to pre-qped predictions: %s", e)
 
             # 3. 平滑衔接（可通过参数切换）
             if args.smooth_type == "linear":
