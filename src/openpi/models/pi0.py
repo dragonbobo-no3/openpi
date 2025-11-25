@@ -12,6 +12,7 @@ from openpi.models import pi0_config
 import openpi.models.gemma as _gemma
 import openpi.models.siglip as _siglip
 from openpi.shared import array_typing as at
+from openpi.shared.effort_type import EffortType
 
 logger = logging.getLogger("openpi")
 
@@ -68,6 +69,8 @@ class Pi0(_model.BaseModel):
     def __init__(self, config: pi0_config.Pi0Config, rngs: nnx.Rngs):
         super().__init__(config.action_dim, config.action_horizon, config.max_token_len)
         self.pi05 = config.pi05
+        self.effort_dim = config.effort_dim
+        self.effort_type = config.effort_type
         paligemma_config = _gemma.get_config(config.paligemma_variant)
         action_expert_config = _gemma.get_config(config.action_expert_variant)
         # TODO: rewrite gemma in NNX. For now, use bridge.
@@ -100,8 +103,58 @@ class Pi0(_model.BaseModel):
             self.action_time_mlp_out = nnx.Linear(action_expert_config.width, action_expert_config.width, rngs=rngs)
         self.action_out_proj = nnx.Linear(action_expert_config.width, config.action_dim, rngs=rngs)
 
+        # for effort
+        self.effort_proj_in = nnx.Linear(config.effort_dim_in, 2 * action_expert_config.width, rngs=rngs)
+        self.effort_proj_out = nnx.Linear(2 * action_expert_config.width, action_expert_config.width, rngs=rngs)
+        if self.effort_type == EffortType.EXPERT_HIS_C_FUT:
+            self.action_in_proj = nnx.Linear(config.action_dim + config.effort_dim, action_expert_config.width, rngs=rngs)
+            self.action_out_proj = nnx.Linear(action_expert_config.width, config.action_dim + config.effort_dim, rngs=rngs)
+
         # This attribute gets automatically set by model.train() and model.eval().
         self.deterministic = True
+
+    def _project_effort(self, effort: at.Float[at.Array, "b *d"]) -> at.Float[at.Array, "b emb"]:
+        effort_hidden = self.effort_proj_in(effort)
+        effort_hidden = nnx.swish(effort_hidden)
+        return self.effort_proj_out(effort_hidden)
+
+    def _process_effort_tokens(self, obs: _model.Observation, mode: str) -> tuple[list, list, list]:
+        tokens_list = []
+        input_mask_list = []
+        ar_mask_list = []
+
+        # suffix token will not be attend by postfix
+        ar_mask_value = mode == "suffix"
+
+        if ((mode == "prefix" and self.effort_type in (EffortType.LLM, EffortType.LLM_HIS_C, EffortType.LLM_HIS_T)) or
+                (mode == "suffix" and self.effort_type in (EffortType.EXPERT, EffortType.EXPERT_HIS_C,
+                                                           EffortType.EXPERT_HIS_T,
+                                                           EffortType.EXPERT_HIS_C_FUT,
+                                                           EffortType.EXPERT_HIS_C_L_FUT))):
+
+            if self.effort_type in (EffortType.LLM, EffortType.EXPERT):
+                effort_token = self._project_effort(obs.effort[:, -1])[:, None, :]  # assert last offset is 0(current)
+                tokens_list.append(effort_token)
+                input_mask_list.append(jnp.ones(effort_token.shape[:2], dtype=jnp.bool_))
+                ar_mask_list.append(ar_mask_value)
+
+            elif self.effort_type in (EffortType.LLM_HIS_C, EffortType.EXPERT_HIS_C,
+                                      EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+                batch_size, _, _ = obs.effort.shape
+                effort_flat = obs.effort.reshape(batch_size, -1)
+                effort_token = self._project_effort(effort_flat)[:, None, :]
+                tokens_list.append(effort_token)
+                input_mask_list.append(jnp.ones(effort_token.shape[:2], dtype=jnp.bool_))
+                ar_mask_list.append(ar_mask_value)
+
+            elif self.effort_type in (EffortType.LLM_HIS_T, EffortType.EXPERT_HIS_T):
+                for i in range(obs.effort.shape[1]):
+                    effort_token = self._project_effort(obs.effort[:, i])[:, None, :]
+                    tokens_list.append(effort_token)
+                    input_mask_list.append(jnp.ones(effort_token.shape[:2], dtype=jnp.bool_))
+                    ar_mask_list.append(ar_mask_value)
+
+        return tokens_list, input_mask_list, ar_mask_list
 
     @at.typecheck
     def embed_prefix(
@@ -149,6 +202,14 @@ class Pi0(_model.BaseModel):
         input_mask = []
         ar_mask = []
         tokens = []
+
+        if self.effort_type != EffortType.EXPERT_HIS_C_L_FUT:
+            # add effort tokens
+            effort_tokens, effort_input_mask, effort_ar_mask = self._process_effort_tokens(obs, mode="suffix")
+            tokens.extend(effort_tokens)
+            input_mask.extend(effort_input_mask)
+            ar_mask.extend(effort_ar_mask)
+
         if not self.pi05:
             # add a single state token
             state_token = self.state_proj(obs.state)[:, None, :]
@@ -191,7 +252,15 @@ class Pi0(_model.BaseModel):
         self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False
     ) -> at.Float[at.Array, "*b ah"]:
         preprocess_rng, noise_rng, time_rng = jax.random.split(rng, 3)
-        observation = _model.preprocess_observation(preprocess_rng, observation, train=train)
+        observation = _model.preprocess_observation(preprocess_rng, observation, train=train,
+                                                    effort_type=self.effort_type)
+
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+            future_steps = actions.shape[1]
+            future_effort = observation.effort[:, -future_steps:, :]
+            assert actions.shape[-1] == self.action_dim
+            observation = observation.replace(effort=observation.effort[:, :-future_steps, :])
+            actions = jnp.concatenate([actions, future_effort], axis=-1)
 
         batch_shape = actions.shape[:-2]
         noise = jax.random.normal(noise_rng, actions.shape)
@@ -210,9 +279,17 @@ class Pi0(_model.BaseModel):
         (prefix_out, suffix_out), _ = self.PaliGemma.llm(
             [prefix_tokens, suffix_tokens], mask=attn_mask, positions=positions, adarms_cond=[None, adarms_cond]
         )
-        v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+        if self.effort_type != EffortType.EXPERT_HIS_C_L_FUT:
+            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
+        else:
+            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon-1:-1])
 
-        return jnp.mean(jnp.square(v_t - u_t), axis=-1)
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+            action_loss = jnp.mean(jnp.square(v_t[..., :self.action_dim] - u_t[..., :self.action_dim]), axis=-1)
+            effort_loss = jnp.mean(jnp.square(v_t[..., self.action_dim:] - u_t[..., self.action_dim:]), axis=-1)
+            return action_loss + 0.1 * effort_loss
+        else:
+            return jnp.mean(jnp.square(v_t - u_t), axis=-1)
 
     @override
     def sample_actions(
@@ -223,12 +300,17 @@ class Pi0(_model.BaseModel):
         num_steps: int | at.Int[at.Array, ""] = 10,
         noise: at.Float[at.Array, "b ah ad"] | None = None,
     ) -> _model.Actions:
-        observation = _model.preprocess_observation(None, observation, train=False)
+        observation = _model.preprocess_observation(None, observation, train=False, effort_type=self.effort_type)
         # note that we use the convention more common in diffusion literature, where t=1 is noise and t=0 is the target
         # distribution. yes, this is the opposite of the pi0 paper, and I'm sorry.
         dt = -1.0 / num_steps
         batch_size = observation.state.shape[0]
-        if noise is None:
+
+        # if noise is None:
+        #     noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim))
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+            noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim + self.effort_dim))
+        else:
             noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim))
 
         # first fill KV cache with a forward pass of the prefix
@@ -267,7 +349,10 @@ class Pi0(_model.BaseModel):
                 adarms_cond=[None, adarms_cond],
             )
             assert prefix_out is None
-            v_t = self.action_out_proj(suffix_out[:, -self.action_horizon :])
+            if self.effort_type != EffortType.EXPERT_HIS_C_L_FUT:
+                v_t = self.action_out_proj(suffix_out[:, -self.action_horizon:])
+            else:
+                v_t = suffix_out[:, -self.action_horizon-1:-1]
 
             return x_t + dt * v_t, time + dt
 
@@ -277,4 +362,8 @@ class Pi0(_model.BaseModel):
             return time >= -dt / 2
 
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
+
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+            x_0 = x_0[..., :self.action_dim]
+
         return x_0
