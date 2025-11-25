@@ -104,9 +104,9 @@ class Pi0(_model.BaseModel):
         self.action_out_proj = nnx.Linear(action_expert_config.width, config.action_dim, rngs=rngs)
 
         # for effort
-        self.effort_proj_in = nnx.Linear(config.effort_dim_in, 2 * action_expert_config.width, rngs=rngs)
-        self.effort_proj_out = nnx.Linear(2 * action_expert_config.width, action_expert_config.width, rngs=rngs)
         if self.effort_type == EffortType.EXPERT_HIS_C_FUT:
+            self.effort_proj_in = nnx.Linear(config.effort_dim_in, 2 * action_expert_config.width, rngs=rngs)
+            self.effort_proj_out = nnx.Linear(2 * action_expert_config.width, action_expert_config.width, rngs=rngs)
             self.action_in_proj = nnx.Linear(config.action_dim + config.effort_dim, action_expert_config.width, rngs=rngs)
             self.action_out_proj = nnx.Linear(action_expert_config.width, config.action_dim + config.effort_dim, rngs=rngs)
 
