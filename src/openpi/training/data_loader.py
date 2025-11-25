@@ -13,6 +13,7 @@ import torch
 
 import openpi.models.model as _model
 import openpi.training.config as _config
+from openpi.shared.effort_type import EffortType
 from openpi.training.droid_rlds_dataset import DroidRldsDataset
 import openpi.transforms as _transforms
 
@@ -77,7 +78,9 @@ class TransformedDatasetSpeed(Dataset[T_co]):
 
     def __len__(self) -> int:
         return len(self._dataset)
-#改    
+
+
+# 改
 class TransformedDataset(Dataset[T_co]):
     def __init__(self, dataset: Dataset, transforms: Sequence[_transforms.DataTransformFn]):
         self._dataset = dataset
@@ -88,18 +91,20 @@ class TransformedDataset(Dataset[T_co]):
 
     def __len__(self) -> int:
         return len(self._dataset)
+
     @property
     def num_frames(self) -> int:
-        return len(self._dataset.hf_dataset) if self._dataset.hf_dataset is not None else self._dataset.meta.total_frames
+        return len(
+            self._dataset.hf_dataset) if self._dataset.hf_dataset is not None else self._dataset.meta.total_frames
 
 
 class IterableTransformedDataset(IterableDataset[T_co]):
     def __init__(
-        self,
-        dataset: IterableDataset,
-        transforms: Sequence[_transforms.DataTransformFn],
-        *,
-        is_batched: bool = False,
+            self,
+            dataset: IterableDataset,
+            transforms: Sequence[_transforms.DataTransformFn],
+            *,
+            is_batched: bool = False,
     ):
         self._dataset = dataset
         self._transform = _transforms.compose(transforms)
@@ -159,7 +164,7 @@ class FakeDataset(Dataset):
 
 
 def create_torch_dataset(
-    data_config: _config.DataConfig, action_horizon: int, model_config: _model.BaseModelConfig
+        data_config: _config.DataConfig, action_horizon: int, model_config: _model.BaseModelConfig
 ) -> Dataset:
     """Create a dataset for training."""
     repo_id = data_config.repo_id
@@ -168,17 +173,31 @@ def create_torch_dataset(
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
     if not data_config.root:
-        root="/jedata/test_0928"
+        root = "/jedata/test_0928"
     else:
         root = data_config.root
     logging.info(f"Using dataset root: {root}")
     dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id=repo_id, root=root)
+
+    delta_timestamps = {
+        **{
+            key: [t / dataset_meta.fps for t in range(model_config.action_horizon)]
+            for key in data_config.action_sequence_keys
+        }
+    }
+
+    if data_config.use_effort:
+    # effort history
+        delta_timestamps["observation.effort"] = [t / dataset_meta.fps for t in data_config.effort_history]
+        # effort future
+        if model_config.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+            delta_timestamps["observation.effort"] += [(t + 1) / dataset_meta.fps for t in
+                                                       range(model_config.action_horizon)]
+
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
         root=root,
-        delta_timestamps={
-            key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
-        },
+        delta_timestamps=delta_timestamps,
         # load_videos = data_config.use_images,
         download_videos=False,
         image_transforms=None,
@@ -189,16 +208,63 @@ def create_torch_dataset(
             dataset = TransformedDatasetSpeed(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
         else:
             dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
-    
+
+    return dataset
+
+
+def create_dataset(data_config: _config.DataConfig, model_config: _model.BaseModelConfig) -> Dataset:
+    """Create a dataset for training."""
+    repo_id = data_config.repo_id
+    if repo_id is None:
+        raise ValueError("Repo ID is not set. Cannot create dataset.")
+    if repo_id == "fake":
+        return FakeDataset(model_config, num_samples=1024)
+
+    if isinstance(repo_id, str):
+        dataset_class = lerobot_dataset.LeRobotDataset
+    else:
+        dataset_class = lerobot_dataset.MultiLeRobotDataset
+    # NOTE here we assume all repos have the same fps.
+    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id[0] if isinstance(repo_id, list) else repo_id,
+                                                          local_files_only=data_config.local_files_only)
+
+    delta_timestamps = {
+        **{
+            key: [t / dataset_meta.fps for t in range(model_config.action_horizon)]
+            for key in data_config.action_sequence_keys
+        }
+    }
+    delta_timestamps["observation.effort"] = [t / dataset_meta.fps for t in data_config.effort_history]
+
+    if model_config.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+        delta_timestamps["observation.effort"] += [(t + 1) / dataset_meta.fps for t in
+                                                   range(model_config.action_horizon)]
+
+    dataset = dataset_class(
+        repo_id,
+        delta_timestamps=delta_timestamps,
+        local_files_only=data_config.local_files_only,
+    )
+
+    if data_config.prompt_from_task:
+        if isinstance(repo_id, str):
+            dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
+        else:
+            for idx, repo_id in enumerate(repo_id):
+                dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id,
+                                                                      local_files_only=data_config.local_files_only)
+                dataset._datasets[idx] = TransformedDataset(dataset._datasets[idx],
+                                                            [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
+
     return dataset
 
 
 def create_rlds_dataset(
-    data_config: _config.DataConfig,
-    action_horizon: int,
-    batch_size: int,
-    *,
-    shuffle: bool = False,
+        data_config: _config.DataConfig,
+        action_horizon: int,
+        batch_size: int,
+        *,
+        shuffle: bool = False,
 ) -> Dataset:
     # At the moment, we only support DROID for RLDS datasets.
     return DroidRldsDataset(
@@ -234,11 +300,11 @@ def transform_dataset(dataset: Dataset, data_config: _config.DataConfig, *, skip
 
 
 def transform_iterable_dataset(
-    dataset: IterableDataset,
-    data_config: _config.DataConfig,
-    *,
-    skip_norm_stats: bool = False,
-    is_batched: bool = False,
+        dataset: IterableDataset,
+        data_config: _config.DataConfig,
+        *,
+        skip_norm_stats: bool = False,
+        is_batched: bool = False,
 ) -> IterableDataset:
     """Transform the dataset by applying the data transforms."""
     norm_stats = {}
@@ -263,13 +329,13 @@ def transform_iterable_dataset(
 
 
 def create_data_loader(
-    config: _config.TrainConfig,
-    *,
-    sharding: jax.sharding.Sharding | None = None,
-    shuffle: bool = False,
-    num_batches: int | None = None,
-    skip_norm_stats: bool = False,
-    framework: Literal["jax", "pytorch"] = "jax",
+        config: _config.TrainConfig,
+        *,
+        sharding: jax.sharding.Sharding | None = None,
+        shuffle: bool = False,
+        num_batches: int | None = None,
+        skip_norm_stats: bool = False,
+        framework: Literal["jax", "pytorch"] = "jax",
 ) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create a data loader for training.
 
@@ -311,18 +377,18 @@ def create_data_loader(
 
 
 def create_torch_data_loader(
-    data_config: _config.DataConfig,
-    model_config: _model.BaseModelConfig,
-    action_horizon: int,
-    batch_size: int,
-    *,
-    sharding: jax.sharding.Sharding | None = None,
-    skip_norm_stats: bool = False,
-    shuffle: bool = False,
-    num_batches: int | None = None,
-    num_workers: int = 0,
-    seed: int = 0,
-    framework: str = "jax",
+        data_config: _config.DataConfig,
+        model_config: _model.BaseModelConfig,
+        action_horizon: int,
+        batch_size: int,
+        *,
+        sharding: jax.sharding.Sharding | None = None,
+        skip_norm_stats: bool = False,
+        shuffle: bool = False,
+        num_batches: int | None = None,
+        num_workers: int = 0,
+        seed: int = 0,
+        framework: str = "jax",
 ) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create a data loader for training.
 
@@ -380,15 +446,15 @@ def create_torch_data_loader(
 
 
 def create_rlds_data_loader(
-    data_config: _config.DataConfig,
-    action_horizon: int,
-    batch_size: int,
-    *,
-    sharding: jax.sharding.Sharding | None = None,
-    skip_norm_stats: bool = False,
-    shuffle: bool = False,
-    num_batches: int | None = None,
-    framework: str = "jax",
+        data_config: _config.DataConfig,
+        action_horizon: int,
+        batch_size: int,
+        *,
+        sharding: jax.sharding.Sharding | None = None,
+        skip_norm_stats: bool = False,
+        shuffle: bool = False,
+        num_batches: int | None = None,
+        framework: str = "jax",
 ) -> DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create an RLDS data loader for training.
 
@@ -424,17 +490,17 @@ class TorchDataLoader:
     """Torch data loader implementation."""
 
     def __init__(
-        self,
-        dataset,
-        local_batch_size: int,
-        *,
-        sharding: jax.sharding.Sharding | None = None,
-        shuffle: bool = False,
-        sampler: torch.utils.data.Sampler | None = None,
-        num_batches: int | None = None,
-        num_workers: int = 0,
-        seed: int = 0,
-        framework: str = "jax",
+            self,
+            dataset,
+            local_batch_size: int,
+            *,
+            sharding: jax.sharding.Sharding | None = None,
+            shuffle: bool = False,
+            sampler: torch.utils.data.Sampler | None = None,
+            num_batches: int | None = None,
+            num_workers: int = 0,
+            seed: int = 0,
+            framework: str = "jax",
     ):
         """Create a PyTorch data loader.
 
@@ -532,11 +598,11 @@ class RLDSDataLoader:
     """
 
     def __init__(
-        self,
-        dataset: DroidRldsDataset,
-        *,
-        sharding: jax.sharding.Sharding | None = None,
-        num_batches: int | None = None,
+            self,
+            dataset: DroidRldsDataset,
+            *,
+            sharding: jax.sharding.Sharding | None = None,
+            num_batches: int | None = None,
     ):
         self._dataset = dataset
         self._num_batches = num_batches

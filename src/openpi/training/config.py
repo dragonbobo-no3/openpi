@@ -101,12 +101,14 @@ class DataConfig:
     # my edit
     root: str | None = None
 
-    use_images: bool  = True
+    use_images: bool = True
 
     # Sequence of relative timestamps (in frames) for effort history. For example, (-20, -10, 0) means
     # loading effort data from 20 frames ago, 10 frames ago, and the current frame.
     # When empty, no effort history is loaded.
     effort_history: Sequence[int] = (0,)
+
+    use_effort: bool = False
 
 
 class GroupFactory(Protocol):
@@ -186,7 +188,7 @@ class DataConfigFactory(abc.ABC):
     use_speed: bool = False
 
     @abc.abstractmethod
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = True) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images=True) -> DataConfig:
         """Create a data config."""
 
     def create_base_config(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
@@ -322,6 +324,7 @@ class LeRobotAgileXDataConfigOld(DataConfigFactory):
     # Action keys that will be used to read the action sequence from the dataset.
     action_sequence_keys: Sequence[str] = ("action",)
 
+
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgileXDataConfig(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
@@ -359,7 +362,8 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = load_images) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig,
+               use_images=load_images) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
                                                use_images=use_images)],
@@ -381,9 +385,10 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/home/kleist/Documents/Database/test_1114/",
+            root="/home/kleist/Documents/Database/test_1124/",
         )
-    
+
+
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgileXDataConfigDepth(DataConfigFactory):
     # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
@@ -399,7 +404,6 @@ class LeRobotAgileXDataConfigDepth(DataConfigFactory):
     load_images: bool = True
 
     use_depth: bool = True
-
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
@@ -425,10 +429,11 @@ class LeRobotAgileXDataConfigDepth(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = load_images, use_depth = use_depth) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images=load_images,
+               use_depth=use_depth) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
-                                               use_images=use_images,use_depth=use_depth)],
+                                               use_images=use_images, use_depth=use_depth)],
             outputs=[agileX_policy.AgileXOutputs(adapt_to_pi=self.adapt_to_pi)],
         )
         if self.use_delta_joint_actions:
@@ -448,8 +453,9 @@ class LeRobotAgileXDataConfigDepth(DataConfigFactory):
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
             root="/jedata/test_0928_100_v3/test_0928_100_v2",
-            use_images = use_images,
+            use_images=use_images,
         )
+
 
 @dataclasses.dataclass(frozen=True)
 class LeRobotAgileXDataConfigNewForm(DataConfigFactory):
@@ -466,7 +472,6 @@ class LeRobotAgileXDataConfigNewForm(DataConfigFactory):
     load_images: bool = True
 
     use_depth: bool = True
-
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
@@ -494,10 +499,11 @@ class LeRobotAgileXDataConfigNewForm(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = load_images, use_depth = use_depth) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images=load_images,
+               use_depth=use_depth) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
-                                               use_images=use_images,use_depth=use_depth)],
+                                               use_images=use_images, use_depth=use_depth)],
             outputs=[agileX_policy.AgileXOutputs(adapt_to_pi=self.adapt_to_pi)],
         )
         if self.use_delta_joint_actions:
@@ -517,8 +523,9 @@ class LeRobotAgileXDataConfigNewForm(DataConfigFactory):
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
             root="/jedata/test_1105",
-            use_images = use_images,
+            use_images=use_images,
         )
+
 
 @dataclasses.dataclass(frozen=True)
 class LeRobotTavlaDataConfig(DataConfigFactory):
@@ -540,6 +547,8 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
     # loading effort data from 20 frames ago, 10 frames ago, and the current frame.
     # If empty, will not load effort data.
     effort_history: Sequence[int] = ()
+
+    use_effort: bool = True
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(default=_transforms.Group())
@@ -603,11 +612,12 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
             action_sequence_keys=self.action_sequence_keys,
             effort_history=self.effort_history,
             prompt_from_task=(self.default_prompt is None),
+            use_effort=self.use_effort,
         )
 
     # 处理多数据集时的情况，此时asset_id=repo_id是一个list，norm_stats直接存在assets_base_dir/config_name下
     def _load_norm_stats(
-        self, assets_dir: epath.Path, asset_id: str | list[str] | None
+            self, assets_dir: epath.Path, asset_id: str | list[str] | None
     ) -> dict[str, _transforms.NormStats] | None:
         if asset_id is None:
             return None
@@ -620,7 +630,6 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
         except FileNotFoundError:
             logging.warning(f"Norm stats not found in {data_assets_dir}, skipping.")
             return None
-
 
 
 @dataclasses.dataclass(frozen=True)
@@ -698,7 +707,6 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
             data_transforms=data_transforms,
             model_transforms=model_transforms,
         )
-        
 
 
 @dataclasses.dataclass(frozen=True)
@@ -835,7 +843,7 @@ class TrainConfig:
     data: DataConfigFactory = dataclasses.field(default_factory=FakeDataConfig)
 
     # Base directory for config assets (e.g., norm stats).
-    assets_base_dir: str = ""#"./assets"
+    assets_base_dir: str = ""  # "./assets"
     # Base directory for checkpoints.
     checkpoint_base_dir: str = "./checkpoints"
 
@@ -894,8 +902,8 @@ class TrainConfig:
         if self.resume and self.overwrite:
             raise ValueError("Cannot resume and overwrite at the same time.")
         if (getattr(self.data, "effort_history", False)
-            and self.model.effort_type in (EffortType.LLM_HIS_C, EffortType.EXPERT_HIS_C,
-                                           EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT)):
+                and self.model.effort_type in (EffortType.LLM_HIS_C, EffortType.EXPERT_HIS_C,
+                                               EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT)):
             object.__setattr__(
                 self.model,
                 "effort_dim_in",
@@ -914,14 +922,13 @@ _CONFIGS = [
     TrainConfig(
         name="pi0_lora_effort_history",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
-                            effort_type=EffortType.EXPERT_HIS_C),
+                                   effort_type=EffortType.EXPERT_HIS_C),
         data=LeRobotTavlaDataConfig(
             repo_id="org/repo",
             effort_history=tuple((4 * i - 36 for i in range(10))),  # sample 10 frames in 2s
             default_prompt="do something",
 
             base_config=DataConfig(
-                local_files_only=True,  # Set to True for local-only datasets.
             ),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("s3://openpi-assets/checkpoints/pi0_base/params"),
@@ -1005,7 +1012,7 @@ _CONFIGS = [
         num_workers=8,
         fsdp_devices=8,
     ),
-    #pi0.5
+    # pi0.5
     TrainConfig(
         name="pi05_agileX_speed",
         # model = pi0_fast.Pi0FASTConfig(
@@ -1013,18 +1020,18 @@ _CONFIGS = [
         #     action_horizon=25,
         #     max_token_len=64,
         # ),
-        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=128,
-                            pi05=True),
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
+                                   action_expert_variant="gemma_300m",
+                                   action_dim=7,
+                                   action_horizon=50,
+                                   max_token_len=128,
+                                   pi05=True),
         freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=128,
-                            pi05=True).get_freeze_filter(),
+                                           action_expert_variant="gemma_300m",
+                                           action_dim=7,
+                                           action_horizon=50,
+                                           max_token_len=128,
+                                           pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/home/test/jemotor/jesource/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/home/test/jemotor/jedata/test_0928_100_v2_replaced/"),
@@ -1046,8 +1053,8 @@ _CONFIGS = [
         keep_period=5_000,
         num_workers=8,
         fsdp_devices=8,
-    ),     
-    #pi0.5
+    ),
+    # pi0.5
     TrainConfig(
         name="pi05_agileX",
         # model = pi0_fast.Pi0FASTConfig(
@@ -1055,21 +1062,21 @@ _CONFIGS = [
         #     action_horizon=25,
         #     max_token_len=64,
         # ),
-        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=128,
-                            pi05=True),
-        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=128,
-                            pi05=True).get_freeze_filter(),
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
+                                   action_expert_variant="gemma_300m_lora",
+                                   action_dim=7,
+                                   action_horizon=50,
+                                   max_token_len=128,
+                                   pi05=True),
+        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
+                                           action_expert_variant="gemma_300m_lora",
+                                           action_dim=7,
+                                           action_horizon=50,
+                                           max_token_len=128,
+                                           pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_1114/"),
+            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_1124/"),
             default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
@@ -1081,14 +1088,14 @@ _CONFIGS = [
             decay_lr=1e-5,
         ),
         num_train_steps=1_000_000,
-        batch_size=512,
+        batch_size=4,
         log_interval=100,
         save_interval=2_500,
         keep_period=5_000,
-        num_workers=8,
-        fsdp_devices=8,
-    ),     
-    #pi0
+        num_workers=1,
+        fsdp_devices=1,
+    ),
+    # pi0
     TrainConfig(
         name="pi0_agileX",
         # model = pi0_fast.Pi0FASTConfig(
@@ -1096,16 +1103,16 @@ _CONFIGS = [
         #     action_horizon=25,
         #     max_token_len=64,
         # ),
-        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=48),
-        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b", 
-                            action_expert_variant="gemma_300m",
-                            action_dim=7,
-                            action_horizon=50,
-                            max_token_len=48).get_freeze_filter(),
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
+                                   action_expert_variant="gemma_300m",
+                                   action_dim=7,
+                                   action_horizon=50,
+                                   max_token_len=48),
+        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
+                                           action_expert_variant="gemma_300m",
+                                           action_dim=7,
+                                           action_horizon=50,
+                                           max_token_len=48).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/home/test/jemotor/jesource/pi0_base/pi0_base"),
         data=LeRobotAgileXDataConfig(
             assets=AssetsConfig(assets_dir="/home/test/jemotor/jedata/test_0928/"),
@@ -1126,18 +1133,18 @@ _CONFIGS = [
         keep_period=2_500,
         num_workers=4,
         fsdp_devices=8,
-    ), 
-    #pi0_fast 
+    ),
+    # pi0_fast
     TrainConfig(
         name="pi0_fast_agileX",
-        model = pi0_fast.Pi0FASTConfig(
+        model=pi0_fast.Pi0FASTConfig(
             paligemma_variant="gemma_2b_lora",
             action_dim=7,  # 6 joints + 1 gripper actions
             action_horizon=25,
             max_token_len=128,
         ),
         freeze_filter=pi0_fast.Pi0FASTConfig(
-            paligemma_variant="gemma_2b_lora", 
+            paligemma_variant="gemma_2b_lora",
             action_dim=7,
             action_horizon=25,
             max_token_len=128,
@@ -1156,7 +1163,7 @@ _CONFIGS = [
         keep_period=20_000,
         num_workers=8,
         fsdp_devices=8,
-    ),    
+    ),
     #
     # Inference Aloha configs.
     #
