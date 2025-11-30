@@ -188,17 +188,17 @@ def create_torch_dataset(
 
     if data_config.use_effort:
     # effort history
-        delta_timestamps["observation.effort"] = [t / dataset_meta.fps for t in data_config.effort_history]
+        delta_timestamps["effort"] = [t / dataset_meta.fps for t in data_config.effort_history]
         # effort future
         if model_config.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
-            delta_timestamps["observation.effort"] += [(t + 1) / dataset_meta.fps for t in
+            delta_timestamps["effort"] += [(t + 1) / dataset_meta.fps for t in
                                                        range(model_config.action_horizon)]
 
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
         root=root,
         delta_timestamps=delta_timestamps,
-        # load_videos = data_config.use_images,
+        load_videos = data_config.use_images,
         download_videos=False,
         image_transforms=None,
     )
@@ -234,10 +234,10 @@ def create_dataset(data_config: _config.DataConfig, model_config: _model.BaseMod
             for key in data_config.action_sequence_keys
         }
     }
-    delta_timestamps["observation.effort"] = [t / dataset_meta.fps for t in data_config.effort_history]
+    delta_timestamps["effort"] = [t / dataset_meta.fps for t in data_config.effort_history]
 
     if model_config.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
-        delta_timestamps["observation.effort"] += [(t + 1) / dataset_meta.fps for t in
+        delta_timestamps["effort"] += [(t + 1) / dataset_meta.fps for t in
                                                    range(model_config.action_horizon)]
 
     dataset = dataset_class(

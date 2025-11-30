@@ -54,6 +54,7 @@ def create_torch_dataloader(
             "state": "observation.state",
             "actions": "action",
             # 注意：不要再出现任何 images/camera 的映射
+            "effort": "effort",
         })
     ])
 
@@ -124,14 +125,12 @@ def main(config_name: str, max_frames: int | None = None):
         )
 
     keys = ["state", "actions"]
-    stats = {key: normalize.RunningStats() for key in keys}
-    if getattr(config.data, "effort_history", False):
+    if data_config.use_effort:
         keys.append("effort")
-
+    stats = {key: normalize.RunningStats() for key in keys}
     # for b in data_loader:
     #     print(b.keys())
-    #     break
-    #
+    
     # print("here")
     for batch in tqdm.tqdm(data_loader, total=num_batches, desc="Computing stats"):
         # print(batch.keys())

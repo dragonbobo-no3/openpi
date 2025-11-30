@@ -385,7 +385,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/home/kleist/Documents/Database/test_1124/",
+            root="/home/kleist/Documents/Database/test_1127_new/",
         )
 
 
@@ -557,9 +557,10 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
 
     def __post_init__(self):
         images = {
-            "cam_high": "observation.images.cam_high",
-            "cam_left_wrist": "observation.images.cam_left_wrist",
-            "cam_right_wrist": "observation.images.cam_right_wrist",
+            "camera0": "camera_01_color_image_raw",
+            "camera1": "camera_02_color_image_raw",
+            "camera2": "camera_03_color_image_raw",
+            "camera3": "camera_04_color_image_raw",
         }
         repack_dict = {
             "images": images,
@@ -569,7 +570,7 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
         if self.default_prompt is None:
             repack_dict["prompt"] = "prompt"
         if self.effort_history:
-            repack_dict["effort"] = "observation.effort"
+            repack_dict["effort"] = "effort"
         object.__setattr__(
             self,
             "repack_transforms",
@@ -583,17 +584,21 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
         )
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images=load_images,
+               use_depth=use_depth) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[
                 tavla_policy.TavlaInputs(
                     action_dim=model_config.action_dim,
+                    use_images=use_images,
+                    use_depth=use_depth,
                 )
             ],
             outputs=[tavla_policy.TavlaOutputs()],
         )
         if self.use_delta_joint_actions:
-            delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+            # mask一共七维度，前六位是true, 然后一维度是false
+            delta_action_mask = _transforms.make_bool_mask(6, -1)
             data_transforms = data_transforms.push(
                 inputs=[_transforms.DeltaActions(delta_action_mask)],
                 outputs=[_transforms.AbsoluteActions(delta_action_mask)],
@@ -605,7 +610,7 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
         model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
 
         return dataclasses.replace(
-            self.create_base_config(assets_dirs),
+            self.create_base_config(assets_dirs,model_config),
             repack_transforms=self.repack_transforms,
             data_transforms=data_transforms,
             model_transforms=model_transforms,
@@ -613,6 +618,9 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
             effort_history=self.effort_history,
             prompt_from_task=(self.default_prompt is None),
             use_effort=self.use_effort,
+            repo_id="lerobot/test",
+            root="/home/kleist/Documents/Database/test_1127_new/",
+            use_images=use_images,
         )
 
     # 处理多数据集时的情况，此时asset_id=repo_id是一个list，norm_stats直接存在assets_base_dir/config_name下
@@ -919,15 +927,56 @@ class TrainConfig:
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
+    # pi0 lora effort
+    TrainConfig(
+        name="pi05_agileX_test_effort",
+        model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
+                                   action_expert_variant="gemma_300m_lora",
+                                   action_dim=7,
+                                   action_horizon=50,
+                                   max_token_len=128,
+                                   pi05=True,
+                                   effort_type=EffortType.EXPERT_HIS_C),
+        freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
+                                           action_expert_variant="gemma_300m_lora",
+                                           action_dim=7,
+                                           action_horizon=50,
+                                           max_token_len=128,
+                                           pi05=True,
+                                           effort_type=EffortType.EXPERT_HIS_C).get_freeze_filter(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/kleist/Documents/Model/openpi_model/pi05_base/params/"),
+        data=LeRobotTavlaDataConfig(
+            effort_history=tuple((4 * i - 36 for i in range(10))),  # sample 10 frames in 2s
+            base_config=DataConfig(
+            ),
+            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_1127_new/"),
+            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
+        ),
+        ema_decay=None,
+        policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
+        wandb_enabled=False,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_000,
+            peak_lr=1e-4,
+            decay_steps=3_000,
+            decay_lr=1e-5,
+        ),
+        num_train_steps=1_000_000,
+        batch_size=4,
+        log_interval=100,
+        save_interval=2_500,
+        keep_period=5_000,
+        num_workers=1,
+        fsdp_devices=1,
+    ),
+    # pi0 lora effort
     TrainConfig(
         name="pi0_lora_effort_history",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
                                    effort_type=EffortType.EXPERT_HIS_C),
         data=LeRobotTavlaDataConfig(
-            repo_id="org/repo",
             effort_history=tuple((4 * i - 36 for i in range(10))),  # sample 10 frames in 2s
             default_prompt="do something",
-
             base_config=DataConfig(
             ),
         ),
