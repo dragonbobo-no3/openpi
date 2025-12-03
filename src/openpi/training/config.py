@@ -588,6 +588,8 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
                use_depth=use_depth) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[
+                # 只保留数据中前7维动作。
+                # _transforms.TruncateActions(target_dim=7),
                 tavla_policy.TavlaInputs(
                     action_dim=model_config.action_dim,
                     use_images=use_images,
@@ -932,21 +934,21 @@ _CONFIGS = [
         name="pi05_agileX_test_effort",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
                                    action_expert_variant="gemma_300m_lora",
-                                   action_dim=7,
+                                   action_dim=14,
                                    action_horizon=50,
                                    max_token_len=128,
                                    pi05=True,
-                                   effort_type=EffortType.EXPERT_HIS_C),
+                                   effort_type=EffortType.EXPERT_HIS_C_FUT),
         freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
                                            action_expert_variant="gemma_300m_lora",
-                                           action_dim=7,
+                                           action_dim=14,
                                            action_horizon=50,
                                            max_token_len=128,
                                            pi05=True,
-                                           effort_type=EffortType.EXPERT_HIS_C).get_freeze_filter(),
+                                           effort_type=EffortType.EXPERT_HIS_C_FUT).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/home/kleist/Documents/Model/openpi_model/pi05_base/params/"),
         data=LeRobotTavlaDataConfig(
-            effort_history=tuple((4 * i - 36 for i in range(10))),  # sample 10 frames in 2s
+            effort_history=tuple((6 * i - 54 for i in range(10))),  # sample 10 frames in 2s
             base_config=DataConfig(
             ),
             assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_1127_new/"),

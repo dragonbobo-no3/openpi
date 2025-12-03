@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+from collections import deque
+from dataclasses import dataclass
+import json
 import os
 import threading
 import time
 import traceback
-import json
-from typing import List, Tuple, Any, Dict, Optional
-from collections import deque
-import numpy as np
-from dataclasses import dataclass
-
-import rclpy
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+from typing import Any
 
 from base_manager import BaseManager
+import numpy as np
+from numpy_logger import NumpyCSVLogger
+import rclpy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import HistoryPolicy
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
+from rclpy.time import Time
+from sensor_msgs.msg import Image
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Header
+
 from openpi.policies import policy_config as _policy_config
 from openpi.training import config as _config
-
-from sensor_msgs.msg import JointState, Image
-from std_msgs.msg import Header
-from numpy_logger import NumpyCSVLogger
-
-from rclpy.time import Time
 
 
 # ---------------------- 工具：图像解码 ----------------------
@@ -77,17 +78,17 @@ def _pack_depth_u16_to_rgb8(depth_u16: np.ndarray, order: str = "HI_LO", b_fill:
 
 
 def transform_ros2msg_2_np(
-        picks: List[Optional[Tuple[int, Any]]],
+        picks: list[tuple[int, Any] | None],
         state_idx,
-        color_idx: List[int],
-        depth_idx: List[int],
+        color_idx: list[int],
+        depth_idx: list[int],
         pack_depth_2_rgb8: bool,
-) -> Dict:
-    obs_dict: Dict[str, Any] = {"state": None, "images": {}}
+) -> dict:
+    obs_dict: dict[str, Any] = {"state": None, "images": {}}
 
     # state
     state_indices = state_idx if isinstance(state_idx, (list, tuple)) else [state_idx]
-    parts: List[np.ndarray] = []
+    parts: list[np.ndarray] = []
     for idx in state_indices:
         if not isinstance(idx, int) or idx < 0 or idx >= len(picks):
             continue
@@ -202,19 +203,19 @@ class ActionFrame:
     a: np.ndarray  # (dof,) float32
 
 
-def load_jsonl(path: str, logger) -> Tuple[List[Dict], List[Dict]]:
+def load_jsonl(path: str, logger) -> tuple[list[dict], list[dict]]:
     """
     Read a JSONL file and return (right_list, left_list).
 
     Each line should be a JSON object with a 'joints' list. Each joint entry is expected to
     contain fields like 'topic', 'stamp_ns', 'name', 'position', 'velocity', 'effort'.
     """
-    right_list: List[Dict] = []
-    left_list: List[Dict] = []
+    right_list: list[dict] = []
+    left_list: list[dict] = []
     if not os.path.exists(path):
         logger.error(f"File does not exist: {path}")
         raise FileNotFoundError(path)
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, encoding="utf-8") as f:
         for line_no, line in enumerate(f):
             line = line.strip()
             if not line:
@@ -224,19 +225,19 @@ def load_jsonl(path: str, logger) -> Tuple[List[Dict], List[Dict]]:
             except Exception as e:
                 logger.warning(f"Skipping invalid JSON at line {line_no+1}: {e}")
                 continue
-            joints = js.get('joints', [])
+            joints = js.get("joints", [])
             for j in joints:
-                topic = j.get('topic', '')
+                topic = j.get("topic", "")
                 entry = {
-                    'stamp_ns': j.get('stamp_ns', 0),
-                    'name': j.get('name', []),
-                    'position': j.get('position', []),
-                    'velocity': j.get('velocity', []),
-                    'effort': j.get('effort', [])
+                    "stamp_ns": j.get("stamp_ns", 0),
+                    "name": j.get("name", []),
+                    "position": j.get("position", []),
+                    "velocity": j.get("velocity", []),
+                    "effort": j.get("effort", [])
                 }
-                if isinstance(topic, str) and (topic.endswith('right') or topic == '/joint_states_right'):
+                if isinstance(topic, str) and (topic.endswith("right") or topic == "/joint_states_right"):
                     right_list.append(entry)
-                elif isinstance(topic, str) and (topic.endswith('left') or topic == '/joint_states_left'):
+                elif isinstance(topic, str) and (topic.endswith("left") or topic == "/joint_states_left"):
                     left_list.append(entry)
     logger.info(f"Loaded {len(right_list)} right entries and {len(left_list)} left entries from {path}")
     return right_list, left_list
@@ -244,7 +245,7 @@ def load_jsonl(path: str, logger) -> Tuple[List[Dict], List[Dict]]:
 def make_jointstate_msg(self, entry: dict) -> JointState:
     msg = JointState()
     # set stamp if available
-    stamp_ns = int(entry.get('stamp_ns', 0))
+    stamp_ns = int(entry.get("stamp_ns", 0))
     try:
         # Time requires non-negative integer nanoseconds
         if stamp_ns > 0:
@@ -252,12 +253,12 @@ def make_jointstate_msg(self, entry: dict) -> JointState:
     except Exception:
         # ignore stamp if invalid
         pass
-    msg.name = entry.get('name', [])
-    msg.position = [float(x) for x in entry.get('position', [])]
-    msg.velocity = [float(x) for x in entry.get('velocity', [])]
-    msg.effort = [float(x) for x in entry.get('effort', [])]
+    msg.name = entry.get("name", [])
+    msg.position = [float(x) for x in entry.get("position", [])]
+    msg.velocity = [float(x) for x in entry.get("velocity", [])]
+    msg.effort = [float(x) for x in entry.get("effort", [])]
     return msg
-    
+
 # ======================= 主要节点 =======================
 class InferenceManager(BaseManager):
     """
@@ -268,35 +269,35 @@ class InferenceManager(BaseManager):
     """
 
     def __init__(self):
-        super().__init__(node_name='inference_manager')
+        super().__init__(node_name="inference_manager")
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1029_pi05_test/62500/')
-        self.declare_parameter('policy_name', 'pi05_agileX_depth')
+        self.declare_parameter("checkpoint_dir", "/home/test/jemotor/jemodel/pi05/1029_pi05_test/62500/")
+        self.declare_parameter("policy_name", "pi05_agileX_depth")
 
-        self.declare_parameter('publish_rate_hz', 30)
-        self.declare_parameter('horizon', 50)
-        self.declare_parameter('replan_threshold_frames', 20)
-        self.declare_parameter('ema', 0.0)
+        self.declare_parameter("publish_rate_hz", 30)
+        self.declare_parameter("horizon", 50)
+        self.declare_parameter("replan_threshold_frames", 20)
+        self.declare_parameter("ema", 0.0)
 
-        self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
-        self.declare_parameter('cmd_joint_names',
-                               ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
-        self.declare_parameter('skip_if_no_subscriber', False)
-        self.declare_parameter('dump_logs', True)
+        self.declare_parameter("cmd_joint_topic", "/joint_cmd_right")
+        self.declare_parameter("cmd_joint_names",
+                               ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"])
+        self.declare_parameter("skip_if_no_subscriber", False)
+        self.declare_parameter("dump_logs", True)
 
         p = self.get_parameter
-        self.checkpoint_dir: str = str(p('checkpoint_dir').value)
-        self.policy_name: str = str(p('policy_name').value)
-        self.publish_rate_hz: float = float(p('publish_rate_hz').value)
-        self.horizon: int = int(p('horizon').value)
-        self.replan_threshold_frames: int = int(p('replan_threshold_frames').value)
-        self.ema: float = float(p('ema').value)
+        self.checkpoint_dir: str = str(p("checkpoint_dir").value)
+        self.policy_name: str = str(p("policy_name").value)
+        self.publish_rate_hz: float = float(p("publish_rate_hz").value)
+        self.horizon: int = int(p("horizon").value)
+        self.replan_threshold_frames: int = int(p("replan_threshold_frames").value)
+        self.ema: float = float(p("ema").value)
 
-        self.cmd_joint_topic: str = str(p('cmd_joint_topic').value)
-        self.cmd_joint_names: List[str] = list(p('cmd_joint_names').value)
-        self.skip_if_no_sub: bool = bool(p('skip_if_no_subscriber').value)
-        self.dump_logs: bool = bool(p('dump_logs').value)   
+        self.cmd_joint_topic: str = str(p("cmd_joint_topic").value)
+        self.cmd_joint_names: list[str] = list(p("cmd_joint_names").value)
+        self.skip_if_no_sub: bool = bool(p("skip_if_no_subscriber").value)
+        self.dump_logs: bool = bool(p("dump_logs").value)
 
         # ---------- 发布者 ----------
         reliable_qos = QoSProfile(
@@ -321,12 +322,16 @@ class InferenceManager(BaseManager):
         self._future_actions: deque[ActionFrame] = deque(maxlen=self.horizon)  # 未来队列（含 ts）
         self._future_lock = threading.Lock()
         self._frames_since_update: int = 999999  # 启动即触发一次推理
-        self._last_action: Optional[np.ndarray] = None
+        self._last_action: np.ndarray | None = None
         self._safe_action = np.zeros((len(self.cmd_joint_names),), dtype=np.float32)
+        # effort 历史配置
+        self.effort_history = tuple(getattr(cfg.data, "effort_history", ()))
+        self._effort_dt = self._dt
+        self.effort_dim = getattr(cfg.model, "effort_dim", 0)
 
         # 发布时钟
-        self._base_time: Optional[float] = None
-        self._next_tick: Optional[float] = None
+        self._base_time: float | None = None
+        self._next_tick: float | None = None
 
         # ---------- 日志 ----------
         if self.dump_logs:
@@ -360,7 +365,7 @@ class InferenceManager(BaseManager):
 
         # 线程管理
         self._stop_evt = threading.Event()
-        self._threads: List[threading.Thread] = []
+        self._threads: list[threading.Thread] = []
 
         self._start_threads()
 
@@ -370,8 +375,8 @@ class InferenceManager(BaseManager):
         self._base_time = now
         self._next_tick = self._ceil_to_next_tick(now)
 
-        th_pub = threading.Thread(target=self._publish_loop, name='publish-loop', daemon=True)
-        th_inf = threading.Thread(target=self._inference_loop, name='inference-loop', daemon=True)
+        th_pub = threading.Thread(target=self._publish_loop, name="publish-loop", daemon=True)
+        th_inf = threading.Thread(target=self._inference_loop, name="inference-loop", daemon=True)
         th_pub.start()
         th_inf.start()
         self._threads.extend([th_pub, th_inf])
@@ -386,9 +391,8 @@ class InferenceManager(BaseManager):
             if sleep_s > 0:
                 time.sleep(min(sleep_s, 0.002))
                 continue
-            else:
-                # 我们已经落后，跳过丢失的 ticks，重置 next_t
-                self._next_tick = now
+            # 我们已经落后，跳过丢失的 ticks，重置 next_t
+            self._next_tick = now
 
             try:
                 # self.get_logger().info(f"Publishing next action at t={now:.6f} for tick={self._next_tick:.6f}")
@@ -401,7 +405,7 @@ class InferenceManager(BaseManager):
                 # 已发布帧数 +1
 
                 if self.dump_logs:
-                    self.logger_action_sended.log(action)   
+                    self.logger_action_sended.log(action)
 
                 self._frames_since_update += 1
             except Exception as e:
@@ -413,7 +417,7 @@ class InferenceManager(BaseManager):
         # Scheduled replay publish loop: mirror behavior of _publish_loop
         assert self._base_time is not None and self._next_tick is not None
         # ensure an index counter exists
-        if not hasattr(self, 'index'):
+        if not hasattr(self, "index"):
             self.index = 0
 
         while rclpy.ok() and not self._stop_evt.is_set():
@@ -422,9 +426,8 @@ class InferenceManager(BaseManager):
             if sleep_s > 0:
                 time.sleep(min(sleep_s, 0.002))
                 continue
-            else:
-                # we're behind; reset next tick to avoid burst catch-up
-                self._next_tick = now
+            # we're behind; reset next tick to avoid burst catch-up
+            self._next_tick = now
 
             try:
                 # Publish right-side entry if present
@@ -496,7 +499,7 @@ class InferenceManager(BaseManager):
                     time.sleep(0.001)
                     continue
                 t_ref, picks = out
-                obs = self._build_obs(picks)
+                obs = self._build_obs(picks, t_ref)
 
                 # 规范化观测时间戳（秒）
                 obs_ts = float(t_ref * 1e-9)
@@ -507,11 +510,11 @@ class InferenceManager(BaseManager):
 
                 if self.dump_logs:
                     # 直接把 state / action 写入；不在此处自动加入行级时间戳
-                    self.logger_obs.log(obs['state'])
-                    for row in result['actions']:
+                    self.logger_obs.log(obs["state"])
+                    for row in result["actions"]:
                         self.logger_action.log(row)
 
-                actions = result.get('actions', None)
+                actions = result.get("actions", None)
                 if actions is None:
                     self.get_logger().warn("Policy returned no 'actions'")
                     time.sleep(0.01)
@@ -559,7 +562,7 @@ class InferenceManager(BaseManager):
                     time.sleep(0.001)
                     continue
                 t_ref, picks = out
-                obs = self._build_obs(picks)
+                obs = self._build_obs(picks, t_ref)
 
                 # 规范化观测时间戳（秒）
                 obs_ts = float(t_ref * 1e-9)
@@ -570,8 +573,8 @@ class InferenceManager(BaseManager):
 
                 if self.dump_logs:
                     # 直接把 state / action 写入；不在此处自动加入行级时间戳
-                    self.logger_obs.log(obs['state'])
-                    for row in result['actions']:
+                    self.logger_obs.log(obs["state"])
+                    for row in result["actions"]:
                         self.logger_action.log(row)
 
                 # Use positions from right_list as replayed actions
@@ -582,14 +585,14 @@ class InferenceManager(BaseManager):
                 actions = []
                 for entry in chunk:
                     if isinstance(entry, dict):
-                        actions.append(entry.get('position', []))
+                        actions.append(entry.get("position", []))
                     else:
                         actions.append(entry)
                 if not actions:
                     self.get_logger().warn("No replay actions available in chunk")
                     time.sleep(0.01)
                     continue
-                
+
                 act = np.asarray(actions, dtype=np.float32)
                 if act.ndim == 1:
                     act = act[None, :]
@@ -614,7 +617,7 @@ class InferenceManager(BaseManager):
 
 
     # ---------- 融合逻辑（基于时间戳对齐） ----------
-    def _fuse_and_update_queue_by_ts(self, new_plan: List[ActionFrame]):
+    def _fuse_and_update_queue_by_ts(self, new_plan: list[ActionFrame]):
         """
         1) old_tail = 未来队列（发布线程在推理期间可能已经弹掉多帧）
         2) 以 old_tail[0].ts 在 new_plan 中用时间戳对齐出 index k（最近/不早于者）
@@ -634,7 +637,7 @@ class InferenceManager(BaseManager):
                 # 在 new_plan 中找到与 old0_ts 对齐的起点 k
                 new_ts = np.asarray([fr.ts for fr in new_plan], dtype=np.float64)
                 # 首先找不早于 old0_ts 的位置
-                k = int(np.searchsorted(new_ts, old0_ts, side='left'))
+                k = int(np.searchsorted(new_ts, old0_ts, side="left"))
                 # 取最近（如果左边更近，就往前挪一位）
                 if k > 0 and (k >= len(new_ts) or abs(new_ts[k] - old0_ts) > abs(new_ts[k - 1] - old0_ts)):
                     k -= 1
@@ -661,12 +664,12 @@ class InferenceManager(BaseManager):
                 self._future_actions.append(ActionFrame(ts=start_ts + i * self._dt, a=a))
 
     # ---------- 计划构建（带时间戳） ----------
-    def _make_new_plan_frames(self, act: np.ndarray, start_ts: float) -> List[ActionFrame]:
+    def _make_new_plan_frames(self, act: np.ndarray, start_ts: float) -> list[ActionFrame]:
         """
         act: (H, dof) float32
         start_ts: 第0帧时间戳（秒）= 观测时间
         """
-        frames: List[ActionFrame] = []
+        frames: list[ActionFrame] = []
         for i in range(act.shape[0]):
             frames.append(ActionFrame(ts=start_ts + i * self._dt, a=act[i]))
         return frames
@@ -690,11 +693,48 @@ class InferenceManager(BaseManager):
         self.pub_joint_cmd.publish(js)
 
     # ---------- 观测 ----------
-    def _build_obs(self, picks):
+    def _build_obs(self, picks, t_ref=None):
         try:
-            return transform_ros2msg_2_np(picks, self._idx_joint, self._idx_color, self._idx_depth, False)
+            obs = transform_ros2msg_2_np(picks, self._idx_joint, self._idx_color, self._idx_depth, False)
+            if self.effort_history:
+                obs["effort"] = self._build_effort_history(t_ref)
+            return obs
         except Exception as e:
             raise RuntimeError(f"_build_obs failed: {e}")
+
+    def _build_effort_history(self, t_ref):
+        if not self._joint_history:
+            self.get_logger().warn("effort_history requested but _joint_history is empty")
+            return np.zeros((len(self.effort_history), self.effort_dim), dtype=np.float32)
+        if not self.effort_history:
+            return np.zeros((0, self.effort_dim), dtype=np.float32)
+        if t_ref == None:
+            self.get_logger().error("must provide a timestamp for effort history")
+            exit(1)
+        base_ns = int(t_ref) if t_ref is not None else self._joint_history[-1][0]
+        times = [t for t, _ in self._joint_history]
+        eff_arrays = [np.asarray(msg.effort, dtype=np.float32) for _, msg in self._joint_history]
+
+        # 找到当前参考帧在历史中的位置（按时间最近）
+        base_idx = int(np.argmin([abs(t - base_ns) for t in times]))
+
+        efforts = []
+        n = len(eff_arrays)
+        for offset in self.effort_history:
+            target_idx = base_idx + int(offset)
+            if target_idx < 0:
+                target_idx = 0
+            elif target_idx >= n:
+                target_idx = n - 1
+            eff = eff_arrays[target_idx]
+            if eff.shape[0] < self.effort_dim:
+                pad = np.zeros((self.effort_dim,), dtype=np.float32)
+                pad[: eff.shape[0]] = eff
+                eff = pad
+            elif eff.shape[0] > self.effort_dim:
+                eff = eff[: self.effort_dim]
+            efforts.append(eff.astype(np.float32, copy=False))
+        return np.stack(efforts, axis=0)
 
     # ---------- 小工具 ----------
     def _fit_action_dim(self, a: np.ndarray) -> np.ndarray:
@@ -761,5 +801,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

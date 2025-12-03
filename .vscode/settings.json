@@ -1,11 +1,86 @@
 {
-    "[python]": {
-        "editor.defaultFormatter": "charliermarsh.ruff",
-        "editor.formatOnSave": true,
-    },
-    "python.testing.pytestArgs": [
-        "src"
-    ],
+    // ========= 通用编辑体验 =========
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": true,
+    "editor.renderWhitespace": "boundary",
+    "editor.rulers": [88],
+    "editor.wordWrap": "off",
+    "editor.minimap.enabled": false,
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.autoSave": "off",
+
+    // ========= 工作台习惯 =========
+    "workbench.startupEditor": "none",
+    "workbench.tips.enabled": false,
+    "workbench.secondarySideBar.defaultVisibility": "hidden",
+
+    // ========= 终端 / Shell =========
+    "terminal.integrated.defaultProfile.linux": "bash",
+
+    // ========= Python 语言服务 (Pylance) =========
+    // 确保已安装：ms-python.python + ms-python.vscode-pylance
+    "python.languageServer": "Pylance",
+    "python.analysis.typeCheckingMode": "basic",      // 可改为 "strict"
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.useLibraryCodeForTypes": true,
+    "python.analysis.inlayHints.variableTypes": true,
+    "python.analysis.inlayHints.functionReturnTypes": true,
+
+    // 建议用 “Python: Select Interpreter” 选择解释器，而不是写死路径
+    // "python.defaultInterpreterPath": "/home/kleist/anaconda3/bin/python",
+
+    // ========= Python 常规行为 =========
+    "python.terminal.activateEnvironment": true,
+    "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+
+    // ========= Black 作为 Python 格式化工具 =========
+    // 确保安装扩展：ms-python.black-formatter
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            // 让 Ruff 在保存时修复问题（需要 Ruff 扩展）
+            "source.fixAll.ruff": "explicit",
+            // 让 Ruff 处理 import（如果你更喜欢用内置 organizeImports，可以删掉这一行）
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+
+    // 关闭旧式 formatter 配置，避免和 Black 冲突
+    "python.formatting.provider": "none",
+
+    // ========= Ruff 作为 Lint & Import 工具（新配置，已去掉旧字段） =========
+    // 确保安装扩展：charliermarsh.ruff
+    "ruff.enable": true,              // 启用 Ruff 扩展
+    "ruff.lint.enable": true,         // 启用 lint（新 native server 会自动决定触发方式）
+    "ruff.format.enable": false,      // 不用 Ruff 当 formatter，交给 Black
+    "ruff.fixAll": true,              // 注册 source.fixAll.ruff
+    "ruff.organizeImports": true,     // 注册 source.organizeImports.ruff
+
+    // 公共参数
+    "ruff.lineLength": 88,            // 统一行宽，和 Black 保持一致
+    // 你可以按需选择规则；如果项目里有 pyproject.toml/ruff.toml，可以完全交给配置文件
+    // "ruff.lint.select": ["E", "F", "W"],
+
+    // 强制使用新的 native server（Rust 实现，替代 ruff-lsp）
+    "ruff.nativeServer": "on",
+    "ruff.configurationPreference": "editorFirst",
+
+    // 如果你有自己的 Ruff 配置文件，可以在这里指定（没有就删掉这一行或保持注释）
+    // "ruff.configuration": "/home/kleist/your_project/pyproject.toml",
+
+    // ========= Jupyter（如果你用 notebook） =========
+    "jupyter.askForKernelRestart": false,
+    "jupyter.interactiveWindow.mode": "perFile",
+
+    // ========= 其他小习惯 =========
+    "editor.unicodeHighlight.nonBasicASCII": false,
+    "explorer.confirmDelete": false,
+    "explorer.confirmDragAndDrop": false
 }

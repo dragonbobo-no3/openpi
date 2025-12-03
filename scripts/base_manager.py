@@ -122,8 +122,8 @@ class MultiStreamAligner:
             self._warn("enqueue failed stream[%d]: %s", i, e)
 
     def _drain_one(self, i: int):
-        qi = self.ingest[i];
-        ti = self.times[i];
+        qi = self.ingest[i]
+        ti = self.times[i]
         mi = self.msgs[i]
         last = ti[-1] if ti else -1
         drained = appended = drop_ooo = 0
@@ -403,6 +403,8 @@ class BaseManager(Node):
         self._success_win = 0
         self._save_times = deque()
         self._last_rate_log_t = time.perf_counter()
+        # 历史关节（含 effort），供推理时回溯
+        self._joint_history: deque[Tuple[int, JointState]] = deque(maxlen=5000)
 
         self.episode_idx: int = int(p('episode_idx').value)
         self.frame_idx = 0
@@ -521,6 +523,11 @@ class BaseManager(Node):
         def _cb(msg: JointState):
             t_ns = self._ns_from_header_or_clock(msg.header)
             self.aligner.put_nowait(self._idx_joint[k], t_ns, msg)
+            try:
+                # 记录到历史，便于推理阶段回溯 effort
+                self._joint_history.append((t_ns, msg))
+            except Exception:
+                pass
 
         return _cb
 

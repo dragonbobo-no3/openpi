@@ -194,7 +194,11 @@ def _decode_aloha(
         use_images: bool = True,  # ← 新增开关
 ) -> dict:
     # --- state 始终解码 ---
-    state = np.asarray(data["state"][:7])
+    raw_state = np.asarray(data["state"])
+    # 取前7维和21:28共14维
+    head = raw_state[..., :7]
+    tail = raw_state[..., 21:28]
+    state = np.concatenate([head, tail], axis=-1)
     state = _decode_state(state, adapt_to_pi=adapt_to_pi)
     data["state"] = state
 
