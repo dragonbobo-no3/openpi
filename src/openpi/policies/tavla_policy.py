@@ -32,8 +32,8 @@ class TavlaInputs(transforms.DataTransformFn):
     use_images: bool = True
     use_depth: bool = False
 
-    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2", "camera3", 'camera0_depth',
-                                                   'camera1_depth', 'camera2_depth', 'camera3_depth',)
+    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("camera0", "camera1", "camera2", "camera3", "camera0_depth",
+                                                   "camera1_depth", "camera2_depth", "camera3_depth",)
 
     def __call__(self, data: dict) -> dict:
         # 仅在需要图像时才调用 _decode_aloha（其内部会访问 data["images"]）
@@ -117,7 +117,7 @@ class TavlaInputs(transforms.DataTransformFn):
 
         if "prompt" in data:
             inputs["prompt"] = data["prompt"]
-            
+
         if "effort" in data:
             inputs["effort"] = data["effort"]
 
@@ -196,9 +196,11 @@ def _decode_aloha(
     # --- state 始终解码 ---
     raw_state = np.asarray(data["state"])
     # 取前7维和21:28共14维
-    head = raw_state[..., :7]
-    tail = raw_state[..., 21:28]
-    state = np.concatenate([head, tail], axis=-1)
+    # head = raw_state[..., :7]
+    # tail = raw_state[..., 21:28]
+    # state = np.concatenate([head, tail], axis=-1)
+    # state = _decode_state(state, adapt_to_pi=adapt_to_pi)
+    state = np.asarray(data["state"][:7])
     state = _decode_state(state, adapt_to_pi=adapt_to_pi)
     data["state"] = state
 

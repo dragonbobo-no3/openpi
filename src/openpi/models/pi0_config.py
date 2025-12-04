@@ -9,8 +9,8 @@ from typing_extensions import override
 from openpi.models import model as _model
 import openpi.models.gemma as _gemma
 from openpi.shared import array_typing as at
-import openpi.shared.nnx_utils as nnx_utils
 from openpi.shared.effort_type import EffortType
+import openpi.shared.nnx_utils as nnx_utils
 
 if TYPE_CHECKING:
     from openpi.models.pi0 import Pi0
@@ -40,7 +40,7 @@ class Pi0Config(_model.BaseModelConfig):
             object.__setattr__(self, "discrete_state_input", self.pi05)
 
     effort_type: EffortType = EffortType.NO
-    effort_dim: int = 14
+    effort_dim: int = 7
 
     @property
     @override

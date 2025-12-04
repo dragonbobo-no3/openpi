@@ -23,13 +23,13 @@ import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.policies.tavla_policy as tavla_policy
 import openpi.shared.download as _download
+from openpi.shared.effort_type import EffortType
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
 import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
-from openpi.shared.effort_type import EffortType
 
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
@@ -339,7 +339,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     # use speed mode
     use_speed: bool = False
 
-    load_images: bool = False
+    load_images: bool = True
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
@@ -385,7 +385,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/home/kleist/Documents/Database/test_1127_new/",
+            root="/home/kleist/Documents/Database/test_1128/",
         )
 
 
@@ -621,7 +621,7 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
             prompt_from_task=(self.default_prompt is None),
             use_effort=self.use_effort,
             repo_id="lerobot/test",
-            root="/home/kleist/Documents/Database/test_1127_new/",
+            root="/home/kleist/Documents/Database/test_1128/",
             use_images=use_images,
         )
 
@@ -934,24 +934,26 @@ _CONFIGS = [
         name="pi05_agileX_test_effort",
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
                                    action_expert_variant="gemma_300m_lora",
-                                   action_dim=14,
+                                   action_dim=7,
                                    action_horizon=50,
                                    max_token_len=128,
                                    pi05=True,
+                                   effort_dim=7,
                                    effort_type=EffortType.EXPERT_HIS_C_FUT),
         freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora",
                                            action_expert_variant="gemma_300m_lora",
-                                           action_dim=14,
+                                           action_dim=7,
                                            action_horizon=50,
                                            max_token_len=128,
                                            pi05=True,
+                                           effort_dim=7,
                                            effort_type=EffortType.EXPERT_HIS_C_FUT).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/home/kleist/Documents/Model/openpi_model/pi05_base/params/"),
         data=LeRobotTavlaDataConfig(
-            effort_history=tuple((6 * i - 54 for i in range(10))),  # sample 10 frames in 2s
+            effort_history=tuple(6 * i - 54 for i in range(10)),  # sample 10 frames in 2s
             base_config=DataConfig(
             ),
-            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_1127_new/"),
+            assets=AssetsConfig(assets_dir="/home/kleist/Documents/Database/test_1128/"),
             default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
         ),
         ema_decay=None,
@@ -977,7 +979,7 @@ _CONFIGS = [
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
                                    effort_type=EffortType.EXPERT_HIS_C),
         data=LeRobotTavlaDataConfig(
-            effort_history=tuple((4 * i - 36 for i in range(10))),  # sample 10 frames in 2s
+            effort_history=tuple(4 * i - 36 for i in range(10)),  # sample 10 frames in 2s
             default_prompt="do something",
             base_config=DataConfig(
             ),
