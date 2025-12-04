@@ -372,7 +372,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_1112_trans",
+            root="/jedata/test_1125_test",
         )
     
 @dataclasses.dataclass(frozen=True)
@@ -438,7 +438,7 @@ class LeRobotAgileXDataConfigDepth(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_0928_100_v3/test_0928_100_v2",
+            root="/jedata/test_1114",
             use_images = use_images,
         )
 
@@ -923,8 +923,8 @@ _CONFIGS = [
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/jedata/test_1112_trans/"),
-            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
+            assets=AssetsConfig(assets_dir="/jedata/test_1125_test/"),
+            default_prompt="Pick up the PCB board from the conveyor belt and place it into the yellow container.",
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
