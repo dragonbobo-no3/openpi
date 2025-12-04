@@ -328,7 +328,9 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     adapt_to_pi: bool = True
     # use speed mode
     use_speed: bool = False
-    
+
+    load_images: bool = False
+
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
         default=_transforms.Group(
@@ -350,7 +352,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
-    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = True) -> DataConfig:
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = load_images) -> DataConfig:
         data_transforms = _transforms.Group(
             inputs=[agileX_policy.AgileXInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
                                                use_images=use_images)],
