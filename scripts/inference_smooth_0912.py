@@ -291,12 +291,12 @@ def main():
     parser.add_argument("--use_degrees", action="store_true")
     parser.add_argument("--action_steps", type=int, required=False, default=20, help="number of action steps to execute before next inference")
     parser.add_argument("--smooth_type", type=str, default="cubic", choices=["linear", "cubic", "quintic", "ema"], help="动作平滑策略: linear/cubic/quintic/ema")
-    parser.add_argument("--ema_alpha", type=float, default=0.7, help="EMA平滑时新动作权重alpha,0~1")
+    parser.add_argument("--ema_alpha", type=float, default=0.5, help="EMA平滑时新动作权重alpha,0~1")
     parser.add_argument("--align_mode", type=str, default="step", choices=["step", "euclidean"], help="新动作对齐方式: step(步数) 或 euclidean(欧氏距离)")
     # Horizon-level smoothing of the predicted action sequence (uses full predicted horizon)
-    parser.add_argument("--horizon_smooth", type=str, default="none", choices=["none", "moving", "median", "ema"], help="对预测 horizon 进行时序平滑: none/moving/median/ema")
-    parser.add_argument("--horizon_window", type=int, default=1, help="窗口大小用于 moving/median 平滑（越大越平滑）。奇数优先")
-    parser.add_argument("--horizon_ema_alpha", type=float, default=0.9, help="horizon EMA alpha 用于 horizon_smooth=ema")
+    parser.add_argument("--horizon_smooth", type=str, default="ema", choices=["none", "moving", "median", "ema"], help="对预测 horizon 进行时序平滑: none/moving/median/ema")
+    parser.add_argument("--horizon_window", type=int, default=30, help="窗口大小用于 moving/median 平滑（越大越平滑）。奇数优先")
+    parser.add_argument("--horizon_ema_alpha", type=float, default=0.7, help="horizon EMA alpha 用于 horizon_smooth=ema")
     # QP-style online optimizer options
     parser.add_argument("--qp_lambda_acc", type=float, default=0.0, help="二阶差分加速惩罚系数（>=0），qp优化时使用。0 表示禁用")
     parser.add_argument("--qp_velocity_limit", type=float, default=0.0, help="可选的每步最大速度（动作单位/step），>0 则启用简单束缚后处理")
@@ -308,7 +308,7 @@ def main():
 
     set_seeds(args.seed)
 
-    logger = NumpyCSVLogger("logs/smooth_0918.csv", mode="w")
+    logger = NumpyCSVLogger("/home/test/test_tra/12500_ewa_07_1.csv", mode="w")
     print_log = True
 
     # 解析摄像头配置

@@ -125,7 +125,10 @@ class OrbbecCamera(Camera):
         self.new_frame_event: Event = Event()
         # self.logs = {}
         # self.temporal_filter = TemporalFilter(config.TemporalFilter_alpha)
+        print(self.index_or_path)
         self.device = config.device_list.get_device_by_serial_number(self.index_or_path)
+        self.device.set_bool_property(ob.OBPropertyID.OB_PROP_COLOR_AUTO_WHITE_BALANCE_BOOL, False)
+        self.device.set_int_property(ob.OBPropertyID.OB_PROP_COLOR_WHITE_BALANCE_INT, 5000)
 
     @property
     def is_connected(self) -> bool:

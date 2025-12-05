@@ -278,9 +278,9 @@ class BaseManager(Node):
         self.declare_parameter('color_topics', [])
         self.declare_parameter('depth_topics', [])
         self.declare_parameter('color_topics_csv',
-                               '/camera_01/color/image_raw,/camera_02/color/image_raw,/camera_03/color/image_raw,/camera_04/color/image_raw')
+                               '/camera_04/color/image_raw,/camera_01/color/image_raw,/camera_02/color/image_raw,/camera_03/color/image_raw')
         self.declare_parameter('depth_topics_csv',
-                               '/camera_01/depth/image_raw,/camera_02/depth/image_raw,/camera_03/depth/image_raw,/camera_04/depth/image_raw')
+                               '/camera_04/depth/image_raw,/camera_01/depth/image_raw,/camera_02/depth/image_raw,/camera_03/depth/image_raw')
 
         # joint/tactile：多路 + 兼容单路
         self.declare_parameter('joint_state_topics', [])

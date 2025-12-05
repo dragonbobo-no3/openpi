@@ -337,7 +337,7 @@ uv run scripts/plot_action_compare.py --pred_action /home/test/jemotor/openpi/lo
 uv run scripts/evaluate_all.py plot --pred_files all_save1.npz all_save2.npz
 uv run scripts/compare_actions.py --file_a all_save1.npz --file_b all_save2.npz --out diff.png
 
-MPLBACKEND=TkAgg uv run scripts/plot_action_obs.py --action logs/action_0819_2_cameras_20251104-112114.csv --obs logs/obs_0819_2_cameras_20251104-112114.csv
+PYTHONPATH=/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib/ uv run scripts/plot_action_obs.py --action logs/action_0819_2_cameras_20251104-112114.csv --obs logs/obs_0819_2_cameras_20251104-112114.csv
 
 [INFO] [1762217733.948005171] [inference_manager]: Publishing next action at t=85913.352237 for tick=85913.340771
 [ERROR] [1762217733.948712966] [inference_manager]: no future actions
@@ -352,4 +352,6 @@ PYTHONPATH=/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbb
 
 
 NEW_PYTHONPATH="/home/test/ros2_ws/install/orbbec_camera_msgs/local/lib/python3.10/dist-packages:/home/test/ros2_ws/build/je_software:/home/test/ros2_ws/install/je_software/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages:/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib/"
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export FASTRTPS_DEFAULT_PROFILES_FILE=~/fastdds_shm_only.xml
 env -u PYTHONPATH PYTHONPATH="$NEW_PYTHONPATH" uv run ./scripts/inference_manager_ros2_test.py

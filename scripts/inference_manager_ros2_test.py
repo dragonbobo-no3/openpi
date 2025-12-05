@@ -271,8 +271,8 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1029_pi05_test/62500/')
-        self.declare_parameter('policy_name', 'pi05_agileX_depth')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1114_pi05_test/50000/')
+        self.declare_parameter('policy_name', 'pi05_agileX')
 
         self.declare_parameter('publish_rate_hz', 30)
         self.declare_parameter('horizon', 50)
