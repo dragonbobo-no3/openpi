@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 用法：
 uv run scripts/evaluate.py run --episode_id 0 --period 50 --out ./temp.npz
 uv run scripts/evaluate.py plot --inp ./temp.npz --out ./temp.png
 """
 
+import argparse
+from collections.abc import Sequence
 import os
 import time
-import argparse
-from typing import Sequence
-
-import numpy as np
-import matplotlib.pyplot as plt
 
 import lerobot.common.datasets.lerobot_dataset as lerobot_dataset
+import matplotlib.pyplot as plt
+import numpy as np
+
+from openpi.models.tokenizer import PaligemmaTokenizer
 from openpi.policies import policy_config as _policy_config
 from openpi.training import config as _config
-from openpi.models.tokenizer import PaligemmaTokenizer
 
 
 # ========== 工具函数 ==========
@@ -230,8 +229,8 @@ def build_cli():
 
     # run
     p_run = subparsers.add_parser("run", help="Run inference and save results to .npz")
-    p_run.add_argument("--config", default="pi05_agileX")
-    p_run.add_argument("--checkpoint_dir", default="/home/test/jemotor/jemodel/pi05/1113_pi05_test/2500/")
+    p_run.add_argument("--config", default="pi05_agileX_test_effort")
+    p_run.add_argument("--checkpoint_dir", default="/home/kleist/Documents/Model/cloud_server/1128_pi05_test/10000/")
     p_run.add_argument("--repo_id", default="lerobot/test")
     p_run.add_argument("--root", default="/home/test/jemotor/jedata/test_1112_trans/")
     p_run.add_argument("--episode_id", type=int, default=5)
