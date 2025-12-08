@@ -272,8 +272,8 @@ class InferenceManager(BaseManager):
         super().__init__(node_name="inference_manager")
 
         # ---------- 参数 ----------
-        self.declare_parameter("checkpoint_dir", "/home/test/jemotor/jemodel/pi05/1029_pi05_test/62500/")
-        self.declare_parameter("policy_name", "pi05_agileX_depth")
+        self.declare_parameter("checkpoint_dir", "/home/test/jemotor/jemodel/pi05/1128_pi05_test/10000/")
+        self.declare_parameter("policy_name", "pi05_agileX_test_effort")
 
         self.declare_parameter("publish_rate_hz", 30)
         self.declare_parameter("horizon", 50)
@@ -484,8 +484,8 @@ class InferenceManager(BaseManager):
     def _inference_loop(self):
         while rclpy.ok() and not self._stop_evt.is_set():
             try:
-                need_replan = (self._frames_since_update >= self.replan_threshold_frames)
-                # need_replan = False
+                # need_replan = (self._frames_since_update >= self.replan_threshold_frames)
+                need_replan = False
                 with self._future_lock:
                     queue_empty = (len(self._future_actions) == 0)
 
@@ -712,15 +712,18 @@ class InferenceManager(BaseManager):
             self.get_logger().error("must provide a timestamp for effort history")
             exit(1)
         base_ns = int(t_ref) if t_ref is not None else self._joint_history[-1][0]
-        times = [t for t, _ in self._joint_history]
-        eff_arrays = [np.asarray(msg.effort, dtype=np.float32) for _, msg in self._joint_history]
+        # Take a snapshot to avoid "deque mutated during iteration" when callbacks append concurrently
+        joint_history_copy = list(self._joint_history)
+        times = [t for t, _ in joint_history_copy]
+        eff_arrays = [np.asarray(msg.effort, dtype=np.float32) for _, msg in joint_history_copy]
 
         # 找到当前参考帧在历史中的位置（按时间最近）
         base_idx = int(np.argmin([abs(t - base_ns) for t in times]))
 
         efforts = []
         n = len(eff_arrays)
-        for offset in self.effort_history:
+        offsets = list(self.effort_history) if self.effort_history is not None else []
+        for offset in offsets:
             target_idx = base_idx + int(offset)
             if target_idx < 0:
                 target_idx = 0
