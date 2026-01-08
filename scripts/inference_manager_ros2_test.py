@@ -271,13 +271,13 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1114_pi05_test/50000/')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/0104_pi05_test/30000/')
         self.declare_parameter('policy_name', 'pi05_agileX')
 
         self.declare_parameter('publish_rate_hz', 30)
         self.declare_parameter('horizon', 50)
         self.declare_parameter('replan_threshold_frames', 20)
-        self.declare_parameter('ema', 0.0)
+        self.declare_parameter('ema', 0.7)
 
         self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
         self.declare_parameter('cmd_joint_names',
@@ -544,8 +544,8 @@ class InferenceManager(BaseManager):
         start_index = 0  # starting index for replay data
         while rclpy.ok() and not self._stop_evt.is_set():
             try:
-                # need_replan = (self._frames_since_update >= self.replan_threshold_frames)
-                need_replan = False
+                need_replan = (self._frames_since_update >= self.replan_threshold_frames)
+                # need_replan = False
                 with self._future_lock:
                     queue_empty = (len(self._future_actions) == 0)
 

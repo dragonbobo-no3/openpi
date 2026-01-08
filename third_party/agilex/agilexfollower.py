@@ -28,7 +28,7 @@ from .errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
 
 from .agilexconfig import AlohaAgileXFollowerConfig
 
-from piper_sdk import C_PiperInterface
+from piper_sdk import C_PiperInterface_V2
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class AlohaAgileXFollower():
     def __init__(self, config: AlohaAgileXFollowerConfig):
 
         self.config = config
-        self.piper = C_PiperInterface(can_name=self.config.port)
+        self.piper = C_PiperInterface_V2(can_name=self.config.port)
         self.cameras = make_cameras_from_configs(config.cameras)
         self.is_enabled_ = False
         self.is_robot_connected_ = False
@@ -243,6 +243,7 @@ class AlohaAgileXFollower():
         if not self.is_enabled:
             self.enable()
         # time_point1 = time.perf_counter()
+        # print(f"high msg:{self.piper.GetArmHighSpdInfoMsgs()}")
         self.piper.MotionCtrl_2(0x01, 0x01, 100)
         # time_point2 = time.perf_counter()
         self.piper.JointCtrl(int(action[0]), int(action[1]), int(action[2]),

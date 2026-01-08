@@ -330,7 +330,7 @@ wrist CP02653000YJ
 left pole CP02653000YR
 right back CP02653000R4
 
-bbcp   -f -P 5 -s 64 -w 256M -v -r -z  alice@10.215.247.2:/jedata/jemotor/model/1027_test/35000 /home/test/jemotor/cloud_server/
+bbcp   -f -P 5 -s 64 -w 256M -v -r -z  alice@10.215.247.2:/jedata/jemotor/model/122931i05_test/40000 /home/test/jemotor/cloud_server/
 
 uv run scripts/plot_action_compare.py --pred_action /home/test/jemotor/openpi/logs/inference_sended_action_0930_4_cameras.csv --send_action /home/test/jemotor/openpi/logs/inference_state_at_action_0930_4_cameras.csv
 
@@ -348,7 +348,7 @@ python -m lerobot.record_aloha_agilex_single_arm    --robot1.type=aloha_agilex_f
 
 uv run -m scripts.inference --port=can_right --checkpoint_dir=/home/test/jemotor/jemodel/pi05/1114_pi05_test/50000/ --cameras="{camera0: {type: orbbec, index_or_path: CP02653000ZL, width: 640, height: 480, fps: 30},camera1: {type: orbbec, index_or_path: CP02653000YJ, width: 640, height: 480, fps: 30},camera2: {type: orbbec, index_or_path: CP02653000YR, width: 640, height: 480, fps: 30},camera3: {type: orbbec, index_or_path: CP02653000R4, width: 640, height: 480, fps: 30}}" --task="Pick up the PCB board from the conveyor belt and place it into the yellow container."
 
-PYTHONPATH=/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib/ uv run -m scripts.inference_smooth_0912 --port=can_right --checkpoint_dir=/home/test/jemotor/jemodel/pi05/1121_pi05_test/32500/ --cameras="{camera0: {type: orbbec, index_or_path: CP02653000ZL, width: 640, height: 480, fps: 30},camera1: {type: orbbec, index_or_path: CP02653000YJ, width: 640, height: 480, fps: 30},camera2: {type: orbbec, index_or_path: CP02653000YR, width: 640, height: 480, fps: 30},camera3: {type: orbbec, index_or_path: CP02653000R4, width: 640, height: 480, fps: 30}}" --task="Pick up the PCB board from the conveyor belt and place it into the yellow container."
+PYTHONPATH=/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib/ uv run -m scripts.inference_smooth_0912 --port=can_right --checkpoint_dir=/home/test/jemotor/jemodel/pi05/1210_pi05_test/22500/ --cameras="{camera0: {type: orbbec, index_or_path: CP02653000ZL, width: 640, height: 480, fps: 30},camera1: {type: orbbec, index_or_path: CP02653000YJ, width: 640, height: 480, fps: 30},camera2: {type: orbbec, index_or_path: CP02653000YR, width: 640, height: 480, fps: 30},camera3: {type: orbbec, index_or_path: CP02653000R4, width: 640, height: 480, fps: 30}}" --task="Pick up the PCB board from the conveyor belt and place it into the yellow container."
 
 
 NEW_PYTHONPATH="/home/test/ros2_ws/install/orbbec_camera_msgs/local/lib/python3.10/dist-packages:/home/test/ros2_ws/build/je_software:/home/test/ros2_ws/install/je_software/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages:/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib/"

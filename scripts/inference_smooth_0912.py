@@ -283,7 +283,7 @@ def main():
     parser = argparse.ArgumentParser(description="Inference script for AgileX follower robot")
     parser.add_argument("--port", type=str, required=True, help="port name")
     parser.add_argument("--checkpoint_dir", required=True, type=str, help="path to checkpoint directory")
-    parser.add_argument("--fps", type=int, required=False, default=30, help="frames per second")
+    parser.add_argument("--fps", type=int, required=False, default=30,help="frames per second")
     parser.add_argument("--task", type=str, required=True, help="task prompt")
     parser.add_argument("--id", type=str, required=False, help="robot id", default="left")
     parser.add_argument("--cameras", type=str, required=False, help="camera config yaml", default=None)
@@ -305,10 +305,10 @@ def main():
     # jitter seed
     parser.add_argument("--seed", type=int, required=False, default=10002)
     args = parser.parse_args()
-
+ 
     set_seeds(args.seed)
 
-    logger = NumpyCSVLogger("/home/test/test_tra/12500_ewa_07_1.csv", mode="w")
+    logger = NumpyCSVLogger("/home/test/test_tra/22500_ewa_07_1.csv", mode="w")
     print_log = True
 
     # 解析摄像头配置
