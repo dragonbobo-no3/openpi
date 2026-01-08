@@ -271,14 +271,15 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1114_pi05_test/50000/')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1114_pi05_test/50000/')  # noqa: Q000
         self.declare_parameter('policy_name', 'pi05_agileX')
 
         self.declare_parameter('publish_rate_hz', 30)
         self.declare_parameter('horizon', 50)
         self.declare_parameter('replan_threshold_frames', 20)
         self.declare_parameter('ema', 0.0)
-
+        self.ema_ignore_dims = [6] # None or [0,3,6]
+        
         self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
@@ -391,19 +392,30 @@ class InferenceManager(BaseManager):
                 self._next_tick = now
 
             try:
-                # self.get_logger().info(f"Publishing next action at t={now:.6f} for tick={self._next_tick:.6f}")
                 action = self._pop_next_action()
+                action = np.asarray(action, dtype=float).reshape(-1)
+                if action.shape[0] != 7:
+                    raise ValueError(f"action must be shape (7,), got {action.shape}")
+
+                # 你可以在类里定义：self.ema_ignore_dims = None 或 [] 或 [0,3,6]
+                ignore_dims = getattr(self, "ema_ignore_dims", None)
+
                 if self.ema > 0.0 and self._last_action is not None:
-                    action = (1.0 - self.ema) * action + self.ema * self._last_action
+                    action = self._apply_ema_with_ignore(
+                        action=action,
+                        last_action=self._last_action,
+                        ema=float(self.ema),
+                        ignore_dims=ignore_dims,
+                    )
+
                 self._publish_joint(action)
                 self._last_action = action
 
-                # 已发布帧数 +1
-
                 if self.dump_logs:
-                    self.logger_action_sended.log(action)   
+                    self.logger_action_sended.log(action)
 
                 self._frames_since_update += 1
+
             except Exception as e:
                 self.get_logger().error(f"publish error: {e}\n{traceback.format_exc()}")
 
@@ -732,6 +744,39 @@ class InferenceManager(BaseManager):
             v = int(t_ref)
             return (v * 1e-9) if v > 1_000_000_000_000 else float(v)
         return float(t_ref)
+
+    def _apply_ema_with_ignore(action: np.ndarray,
+                            last_action: np.ndarray,
+                            ema: float,
+                            ignore_dims=None) -> np.ndarray:
+        """
+        action/last_action: shape (7,)
+        ignore_dims: None / [] / iterable of indices (0..6). Those dims will NOT be EMA-smoothed.
+        """
+        if ema <= 0.0 or last_action is None:
+            return action
+
+        # None 或空 => 不忽略任何维度（对所有维度做 EMA）
+        if not ignore_dims:
+            return (1.0 - ema) * action + ema * last_action
+
+        # 生成 mask：True 表示做 EMA；False 表示忽略（直接用当前 action）
+        mask = np.ones(action.shape, dtype=bool)
+
+        # 允许传入如 [0,3,6]，也允许传入 np array/list
+        idx = np.asarray(list(ignore_dims), dtype=int)
+
+        # 支持负索引（Python 风格），并校验范围
+        idx = np.where(idx < 0, idx + action.shape[0], idx)
+        if np.any((idx < 0) | (idx >= action.shape[0])):
+            raise ValueError(f"ema_ignore_dims out of range: {ignore_dims}, action_dim={action.shape[0]}")
+
+        mask[idx] = False
+
+        out = action.copy()
+        out[mask] = (1.0 - ema) * action[mask] + ema * last_action[mask]
+        # out[~mask] 已经是 action 原值
+        return out
 
     # ---------- 关闭 ----------
     def destroy_node(self):
