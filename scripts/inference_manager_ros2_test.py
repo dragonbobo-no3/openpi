@@ -282,7 +282,7 @@ class InferenceManager(BaseManager):
         self.declare_parameter('publish_rate_hz', 30)
         self.declare_parameter('horizon', 50)
         self.declare_parameter('replan_threshold_frames', 20)
-        self.declare_parameter('ema', 0.0)
+        self.declare_parameter('ema', 0.70)
         self.ema_ignore_dims = [6] # None or [0,3,6]
         
         self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
@@ -561,8 +561,8 @@ class InferenceManager(BaseManager):
         start_index = 0  # starting index for replay data
         while rclpy.ok() and not self._stop_evt.is_set():
             try:
-                # need_replan = (self._frames_since_update >= self.replan_threshold_frames)
-                need_replan = False
+                need_replan = (self._frames_since_update >= self.replan_threshold_frames)
+                # need_replan = False
                 with self._future_lock:
                     queue_empty = (len(self._future_actions) == 0)
 
