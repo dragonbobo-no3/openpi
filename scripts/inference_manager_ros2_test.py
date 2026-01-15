@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import sys
 import threading
 import time
 import traceback
@@ -14,7 +15,11 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
-from base_manager import BaseManager
+COMMON_UTILS_ROOT = "~/ros2_ws/src/common"
+if COMMON_UTILS_ROOT not in sys.path:
+    sys.path.insert(0, COMMON_UTILS_ROOT)
+
+from common_utils.base_manager import BaseManager
 from openpi.policies import policy_config as _policy_config
 from openpi.training import config as _config
 
@@ -271,7 +276,7 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1114_pi05_test/50000/')  # noqa: Q000
+        self.declare_parameter('checkpoint_dir', '/home/kleist/Documents/Model/cloud_server/1206_pi05_test/30000/')  # noqa: Q000
         self.declare_parameter('policy_name', 'pi05_agileX')
 
         self.declare_parameter('publish_rate_hz', 30)
