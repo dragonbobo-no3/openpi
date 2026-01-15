@@ -24,6 +24,7 @@ from openpi.policies import policy_config as _policy_config
 from openpi.training import config as _config
 
 from sensor_msgs.msg import JointState, Image
+from common.msg import OculusInitJointState
 from std_msgs.msg import Header
 from numpy_logger import NumpyCSVLogger
 
@@ -100,11 +101,23 @@ def transform_ros2msg_2_np(
         if item is None:
             continue
         _, js = item
-        if not isinstance(js, JointState):
-            raise TypeError(f"state_idx {idx} points to {type(js)}, expected JointState")
-        if not js.position:
+        if isinstance(js, JointState):
+            if not js.position:
+                continue
+            parts.append(np.asarray(js.position, dtype=np.float32))
             continue
-        parts.append(np.asarray(js.position, dtype=np.float32))
+        if isinstance(js, OculusInitJointState):
+            added = False
+            if getattr(js, "left_valid", False) and js.left.position:
+                parts.append(np.asarray(js.left.position, dtype=np.float32))
+                added = True
+            if getattr(js, "right_valid", False) and js.right.position:
+                parts.append(np.asarray(js.right.position, dtype=np.float32))
+                added = True
+            if added:
+                continue
+            continue
+        raise TypeError(f"state_idx {idx} points to {type(js)}, expected JointState/OculusInitJointState")
     if not parts:
         raise ValueError("No valid JointState.position found")
     obs_dict["state"] = np.concatenate(parts, axis=0) if len(parts) > 1 else parts[0]
