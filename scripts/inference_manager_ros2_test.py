@@ -814,9 +814,10 @@ def main(args=None):
     rclpy.init(args=args)
     node = InferenceManager()
     try:
-        executor = MultiThreadedExecutor(num_threads=os.cpu_count() or 4)
-        executor.add_node(node)
-        executor.spin()
+        # executor = MultiThreadedExecutor(num_threads=os.cpu_count() or 4)
+        # executor.add_node(node)
+        # executor.spin()
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
