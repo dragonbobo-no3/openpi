@@ -337,10 +337,17 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             inputs=[
                 _transforms.RepackTransform(
                     {
-                        "images": {"camera0": "camera0",
-                                   "camera1": "camera1",
-                                   "camera2": "camera2",
-                                   "camera3": "camera3"},
+                        # "images": {"camera0": "camera0",
+                        #            "camera1": "camera1",
+                        #            "camera2": "camera2",
+                        #            "camera3": "camera3"},
+                        # "images": {"camera0": "camera_01_color_image_raw",
+                        #            "camera1": "camera_02_color_image_raw",
+                        #            "camera2": "camera_03_color_image_raw",
+                        #            "camera3": "camera_04_color_image_raw"},
+                        "images": {"camera0": "camera_03_color_image_raw",
+                                   "camera1": "camera_04_color_image_raw",
+                                   "camera2": "camera_05_color_image_raw"},
                         "state": "observation.state",
                         "actions": "action",
                     }
@@ -374,7 +381,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_1204",
+            root="/jedata/test_0207",
         )
     
 @dataclasses.dataclass(frozen=True)
@@ -925,8 +932,8 @@ _CONFIGS = [
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/jedata/test_1125_test/"),
-            default_prompt="Pick up the PCB board from the conveyor belt and place it into the yellow container.",
+            assets=AssetsConfig(assets_dir="/jedata/test_0207/"),
+            default_prompt="Pick up the green PCB board from the yellow container on the left and place it into the yellow container on the right.",
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
