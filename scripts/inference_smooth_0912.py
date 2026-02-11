@@ -299,7 +299,7 @@ def main():
     parser.add_argument("--horizon_ema_alpha", type=float, default=0.7, help="horizon EMA alpha 用于 horizon_smooth=ema")
     # QP-style online optimizer options
     parser.add_argument("--qp_lambda_acc", type=float, default=0.0, help="二阶差分加速惩罚系数（>=0），qp优化时使用。0 表示禁用")
-    parser.add_argument("--qp_velocity_limit", type=float, default=0.0, help="可选的每步最大速度（动作单位/step），>0 则启用简单束缚后处理")
+    parser.add_argument("--qp_velocity_limit", type=float, default=0.7, help="可选的每步最大速度（动作单位/step），>0 则启用简单束缚后处理")
     # speed or pose
     parser.add_argument("--mode", type=str, required=False, default="pose", help="inference mode")
     # jitter seed
@@ -308,7 +308,7 @@ def main():
  
     set_seeds(args.seed)
 
-    logger = NumpyCSVLogger("/home/test/test_tra/22500_ewa_07_1.csv", mode="w")
+    logger = NumpyCSVLogger("/home/test/test_tra/1210_22500_ewa_07_1.csv", mode="w")
     print_log = True
 
     # 解析摄像头配置

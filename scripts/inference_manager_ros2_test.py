@@ -271,7 +271,7 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/0104_pi05_test/30000/')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1210_pi05_test/22500/')
         self.declare_parameter('policy_name', 'pi05_agileX')
 
         self.declare_parameter('publish_rate_hz', 30)
@@ -745,6 +745,7 @@ class InferenceManager(BaseManager):
             return (v * 1e-9) if v > 1_000_000_000_000 else float(v)
         return float(t_ref)
 
+    @staticmethod
     def _apply_ema_with_ignore(action: np.ndarray,
                             last_action: np.ndarray,
                             ema: float,
