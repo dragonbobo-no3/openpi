@@ -289,7 +289,7 @@ class InferenceManager(BaseManager):
         super().__init__(node_name='inference_manager')
 
         # ---------- 参数 ----------
-        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/1210_pi05_test/22500/')
+        self.declare_parameter('checkpoint_dir', '/home/test/jemotor/jemodel/pi05/0207_pi05_test/15000/')
         self.declare_parameter('policy_name', 'pi05_agileX')
 
         self.declare_parameter('publish_rate_hz', 30)
@@ -298,11 +298,11 @@ class InferenceManager(BaseManager):
         self.declare_parameter('ema', 0.70)
         self.ema_ignore_dims = [6] # None or [0,3,6]
         
-        self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
+        self.declare_parameter('cmd_joint_topic', '/joint_cmd_double_arm') #/joint_cmd_right
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
         self.declare_parameter('expected_action_dim', 7)
-        self.declare_parameter('cmd_joint_msg_type', 'JointState')  # JointState | OculusInitJointState
+        self.declare_parameter('cmd_joint_msg_type', 'OculusInitJointState')  # JointState | OculusInitJointState
         self.declare_parameter('oculus_cmd_side', 'right')  # left | right
         self.declare_parameter('skip_if_no_subscriber', False)
         self.declare_parameter('dump_logs', True)

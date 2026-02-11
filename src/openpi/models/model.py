@@ -40,7 +40,7 @@ IMAGE_KEYS = (
     "base_rgb",
     "right_wrist_rgb",
     "feng_rgb",
-    "bao_rgb",
+    # "bao_rgb",
 )
 
 # # 开始

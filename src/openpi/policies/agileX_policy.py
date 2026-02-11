@@ -197,19 +197,19 @@ class AgileXInputs(transforms.DataTransformFn):
             base_image = in_images["camera0"]
             right_wrist_image = in_images["camera1"]
             feng_image = in_images["camera2"]
-            bao_image = in_images["camera3"]
+            # bao_image = in_images["camera3"]
 
             images = {
                 "base_rgb": base_image,
                 "right_wrist_rgb": right_wrist_image,
                 "feng_rgb": feng_image,
-                "bao_rgb": bao_image,
+                # "bao_rgb": bao_image,
             }
             image_masks = {
                 "base_rgb": np.True_,
                 "right_wrist_rgb": np.True_,
                 "feng_rgb": np.True_,
-                "bao_rgb": np.True_,
+                # "bao_rgb": np.True_,
             }
 
             # Add the extra images.

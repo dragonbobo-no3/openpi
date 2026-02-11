@@ -337,10 +337,17 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             inputs=[
                 _transforms.RepackTransform(
                     {
-                        "images": {"camera0": "camera0",
-                                   "camera1": "camera1",
-                                   "camera2": "camera2",
-                                   "camera3": "camera3"},
+                        # "images": {"camera0": "camera0",
+                        #            "camera1": "camera1",
+                        #            "camera2": "camera2",
+                        #            "camera3": "camera3"},
+                        # "images": {"camera0": "camera_01_color_image_raw",
+                        #            "camera1": "camera_02_color_image_raw",
+                        #            "camera2": "camera_03_color_image_raw",
+                        #            "camera3": "camera_04_color_image_raw"},
+                        "images": {"camera0": "camera_03_color_image_raw",
+                                   "camera1": "camera_04_color_image_raw",
+                                   "camera2": "camera_05_color_image_raw"},
                         "state": "observation.state",
                         "actions": "action",
                     }
@@ -374,7 +381,7 @@ class LeRobotAgileXDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_1125_test",
+            root="/jedata/test_0207",
         )
     
 @dataclasses.dataclass(frozen=True)
@@ -925,8 +932,8 @@ _CONFIGS = [
                             pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/home/test/jemotor/jedata/test_1112_trans/"),
-            default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container.",
+            assets=AssetsConfig(assets_dir="/jedata/test_0207/"),
+            default_prompt="Pick up the green PCB board from the yellow container on the left and place it into the yellow container on the right.",
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,
@@ -964,8 +971,8 @@ _CONFIGS = [
                             max_token_len=48).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/home/test/jemotor/jesource/pi0_base/pi0_base"),
         data=LeRobotAgileXDataConfig(
-            assets=AssetsConfig(assets_dir="/home/test/jemotor/jedata/test_0928/"),
-            default_prompt="Pick up the PCB board on the round yellow base and place it into the circular recess of the yellow square container"
+            assets=AssetsConfig(assets_dir="/jedata/test_1204/"),
+            default_prompt="When a round PCB stops at the pickup position on the green conveyor belt, and a yellow tray is visible on the green table next to the conveyor, grasp the PCB with the gripper, lift it straight up, move to the yellow tray, and place the PCB flat into the next empty slot of the tray, filling the six slots in order from left down to right up. If no yellow tray is detected on the table, or if no PCB is present at the pickup position on the conveyor, return the arm to the initial home position instead."
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0]},
         wandb_enabled=False,

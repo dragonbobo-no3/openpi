@@ -351,7 +351,9 @@ uv run -m scripts.inference --port=can_right --checkpoint_dir=/home/test/jemotor
 PYTHONPATH=/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib/ uv run -m scripts.inference_smooth_0912 --port=can_right --checkpoint_dir=/home/test/jemotor/jemodel/pi05/1210_pi05_test/22500/ --cameras="{camera0: {type: orbbec, index_or_path: CP02653000ZL, width: 640, height: 480, fps: 30},camera1: {type: orbbec, index_or_path: CP02653000YJ, width: 640, height: 480, fps: 30},camera2: {type: orbbec, index_or_path: CP02653000YR, width: 640, height: 480, fps: 30},camera3: {type: orbbec, index_or_path: CP02653000R4, width: 640, height: 480, fps: 30}}" --task="Pick up the PCB board from the conveyor belt and place it into the yellow container."
 
 
-NEW_PYTHONPATH="/home/test/ros2_ws/install/orbbec_camera_msgs/local/lib/python3.10/dist-packages:/home/test/ros2_ws/build/je_software:/home/test/ros2_ws/install/je_software/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages:/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib/"
+NEW_PYTHONPATH="/home/test/ros2_ws/install/orbbec_camera_msgs/local/lib/python3.10/dist-packages:/home/test/ros2_ws/build/je_software:/home/test/ros2_ws/install/je_software/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages:/home/test/miniconda3/envs/openpi/lib/python3.11/site-packages/pyorbbecsdk/install/lib:/home/test/ros2_ws/install/common/local/lib/python3.10/dist-packages/"
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export FASTRTPS_DEFAULT_PROFILES_FILE=~/fastdds_shm_only.xml
 env -u PYTHONPATH PYTHONPATH="$NEW_PYTHONPATH" uv run ./scripts/inference_manager_ros2_test.py
+
+source ~/ros2_ws/install/setup.bash
