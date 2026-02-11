@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import sys
 import threading
 import time
 import traceback
@@ -14,11 +15,16 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
-from base_manager import BaseManager
+COMMON_UTILS_ROOT = "~/ros2_ws/src/common"
+if COMMON_UTILS_ROOT not in sys.path:
+    sys.path.insert(0, COMMON_UTILS_ROOT)
+
+from common_utils.base_manager import BaseManager
 from openpi.policies import policy_config as _policy_config
 from openpi.training import config as _config
 
 from sensor_msgs.msg import JointState, Image
+from common.msg import OculusInitJointState
 from std_msgs.msg import Header
 from numpy_logger import NumpyCSVLogger
 
@@ -95,11 +101,23 @@ def transform_ros2msg_2_np(
         if item is None:
             continue
         _, js = item
-        if not isinstance(js, JointState):
-            raise TypeError(f"state_idx {idx} points to {type(js)}, expected JointState")
-        if not js.position:
+        if isinstance(js, JointState):
+            if not js.position:
+                continue
+            parts.append(np.asarray(js.position, dtype=np.float32))
             continue
-        parts.append(np.asarray(js.position, dtype=np.float32))
+        if isinstance(js, OculusInitJointState):
+            added = False
+            if getattr(js, "left_valid", False) and js.left.position:
+                parts.append(np.asarray(js.left.position, dtype=np.float32))
+                added = True
+            if getattr(js, "right_valid", False) and js.right.position:
+                parts.append(np.asarray(js.right.position, dtype=np.float32))
+                added = True
+            if added:
+                continue
+            continue
+        raise TypeError(f"state_idx {idx} points to {type(js)}, expected JointState/OculusInitJointState")
     if not parts:
         raise ValueError("No valid JointState.position found")
     obs_dict["state"] = np.concatenate(parts, axis=0) if len(parts) > 1 else parts[0]
@@ -283,6 +301,9 @@ class InferenceManager(BaseManager):
         self.declare_parameter('cmd_joint_topic', '/joint_cmd_right')
         self.declare_parameter('cmd_joint_names',
                                ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'])
+        self.declare_parameter('expected_action_dim', 7)
+        self.declare_parameter('cmd_joint_msg_type', 'JointState')  # JointState | OculusInitJointState
+        self.declare_parameter('oculus_cmd_side', 'right')  # left | right
         self.declare_parameter('skip_if_no_subscriber', False)
         self.declare_parameter('dump_logs', True)
 
@@ -296,8 +317,33 @@ class InferenceManager(BaseManager):
 
         self.cmd_joint_topic: str = str(p('cmd_joint_topic').value)
         self.cmd_joint_names: List[str] = list(p('cmd_joint_names').value)
+        self.expected_action_dim: int = int(p('expected_action_dim').value)
+        self.cmd_joint_msg_type: str = str(p('cmd_joint_msg_type').value)
+        self.oculus_cmd_side: str = str(p('oculus_cmd_side').value).strip().lower()
         self.skip_if_no_sub: bool = bool(p('skip_if_no_subscriber').value)
         self.dump_logs: bool = bool(p('dump_logs').value)   
+
+        if self.expected_action_dim <= 0:
+            raise ValueError(f"expected_action_dim must be > 0, got {self.expected_action_dim}")
+
+        if self.oculus_cmd_side not in ('left', 'right'):
+            self.get_logger().warn(f"Invalid oculus_cmd_side={self.oculus_cmd_side}, fallback to 'right'")
+            self.oculus_cmd_side = 'right'
+
+        msg_type = self.cmd_joint_msg_type.strip().lower()
+        self.use_oculus_cmd_msg: bool = msg_type in (
+            'oculusinitjointstate',
+            'oculus',
+            'common/msg/oculusinitjointstate',
+        )
+        if (not self.use_oculus_cmd_msg) and msg_type not in (
+            'jointstate',
+            'joint_state',
+            'sensor_msgs/msg/jointstate',
+        ):
+            self.get_logger().warn(
+                f"Unknown cmd_joint_msg_type={self.cmd_joint_msg_type}, fallback to JointState"
+            )
 
         # ---------- 发布者 ----------
         reliable_qos = QoSProfile(
@@ -306,7 +352,14 @@ class InferenceManager(BaseManager):
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
-        self.pub_joint_cmd = self.create_publisher(JointState, self.cmd_joint_topic, reliable_qos)
+        if self.use_oculus_cmd_msg:
+            self.pub_joint_cmd = self.create_publisher(OculusInitJointState, self.cmd_joint_topic, reliable_qos)
+            self.get_logger().info(
+                f"cmd publisher type: OculusInitJointState (side={self.oculus_cmd_side})"
+            )
+        else:
+            self.pub_joint_cmd = self.create_publisher(JointState, self.cmd_joint_topic, reliable_qos)
+            self.get_logger().info("cmd publisher type: JointState")
 
         # ---------- 策略 ----------
         try:
@@ -323,7 +376,6 @@ class InferenceManager(BaseManager):
         self._future_lock = threading.Lock()
         self._frames_since_update: int = 999999  # 启动即触发一次推理
         self._last_action: Optional[np.ndarray] = None
-        self._safe_action = np.zeros((len(self.cmd_joint_names),), dtype=np.float32)
 
         # 发布时钟
         self._base_time: Optional[float] = None
@@ -393,9 +445,15 @@ class InferenceManager(BaseManager):
 
             try:
                 action = self._pop_next_action()
+                if action is None:
+                    self._next_tick += self._dt
+                    continue
                 action = np.asarray(action, dtype=float).reshape(-1)
-                if action.shape[0] != 7:
-                    raise ValueError(f"action must be shape (7,), got {action.shape}")
+                required_dim = self.expected_action_dim * (2 if self.use_oculus_cmd_msg else 1)
+                if action.shape[0] < required_dim:
+                    raise ValueError(
+                        f"action must have at least {required_dim} dims, got {action.shape[0]}"
+                    )
 
                 # 你可以在类里定义：self.ema_ignore_dims = None 或 [] 或 [0,3,6]
                 ignore_dims = getattr(self, "ema_ignore_dims", None)
@@ -443,16 +501,11 @@ class InferenceManager(BaseManager):
                 if len(self.right_list) > 0:
                     idx_r = self.index % len(self.right_list)
                     entry_r = self.right_list[idx_r]
-                    # entry can be a dict (from jsonl) or an action array; handle both
                     if isinstance(entry_r, dict):
-                        try:
-                            msg_r = make_jointstate_msg(self, entry_r)
-                            self.pub_joint_cmd.publish(msg_r)
-                        except Exception:
-                            # failed to convert/publish dict entry as JointState
-                            self.get_logger().error(f"Failed to publish right_list dict entry at index {idx_r}\n{traceback.format_exc()}")
+                        action = np.asarray(entry_r.get("position", []), dtype=np.float32).reshape(-1)
                     else:
-                        self._publish_joint(entry_r)
+                        action = np.asarray(entry_r, dtype=np.float32).reshape(-1)
+                    self._publish_joint(action)
 
                 # (optional) left list handling left commented out to match prior behaviour
                 # if len(self.left_list) > 0:
@@ -479,15 +532,12 @@ class InferenceManager(BaseManager):
             # schedule next tick
             self._next_tick += self._dt
 
-    def _pop_next_action(self) -> np.ndarray:
+    def _pop_next_action(self) -> Optional[np.ndarray]:
         with self._future_lock:
             if self._future_actions:
                 fr = self._future_actions.popleft()
-                a = fr.a
-            else:
-                # self.get_logger().error("no future actions")
-                a = self._last_action if self._last_action is not None else self._safe_action
-        return self._fit_action_dim(a)
+                return self._fit_action_dim(fr.a, source="_pop_next_action")
+        return None
 
     # ---------- 推理线程：按阈值触发 ----------
     def _inference_loop(self):
@@ -664,7 +714,7 @@ class InferenceManager(BaseManager):
                 start_ts = old0_ts
 
             # 维度对齐 & 裁剪到 horizon，并重建 ActionFrame（按 dt 铺设 ts）
-            fused_actions = [self._fit_action_dim(a) for a in fused_actions]
+            fused_actions = [self._fit_action_dim(a, source="_fuse_and_update_queue_by_ts") for a in fused_actions]
             if len(fused_actions) > self.horizon:
                 fused_actions = fused_actions[:self.horizon]
 
@@ -693,12 +743,51 @@ class InferenceManager(BaseManager):
         except Exception:
             pass
 
-        action_list = list(map(float, self._fit_action_dim(action)))
+        vec = np.asarray(action, dtype=np.float32).reshape(-1)
+        joint_dim = self.expected_action_dim
+
+        default_names = list(self.cmd_joint_names[:joint_dim])
+        if len(default_names) < joint_dim:
+            default_names.extend([f"joint{i+1}" for i in range(len(default_names), joint_dim)])
+
+        if self.use_oculus_cmd_msg:
+            need_dim = joint_dim * 2
+            if vec.shape[0] < need_dim:
+                raise ValueError(
+                    f"OculusInitJointState expects at least {need_dim} dims, got {vec.shape[0]}"
+                )
+            left_pos = list(map(float, vec[:joint_dim]))
+            right_pos = list(map(float, vec[joint_dim:joint_dim * 2]))
+
+            msg = OculusInitJointState()
+            msg.header = Header()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.init = False
+            msg.left_gripper = 0.0
+            msg.right_gripper = 0.0
+
+            msg.left.header.stamp = msg.header.stamp
+            msg.left.name = list(default_names)
+            msg.left.position = left_pos
+            msg.left_valid = True
+
+            msg.right.header.stamp = msg.header.stamp
+            msg.right.name = list(default_names)
+            msg.right.position = right_pos
+            msg.right_valid = True
+
+            self.pub_joint_cmd.publish(msg)
+            return
+
+        if vec.shape[0] < joint_dim:
+            raise ValueError(f"JointState expects at least {joint_dim} dims, got {vec.shape[0]}")
+        pos = list(map(float, vec[:joint_dim]))
+
         js = JointState()
         js.header = Header()
         js.header.stamp = self.get_clock().now().to_msg()
-        js.name = list(self.cmd_joint_names)
-        js.position = action_list
+        js.name = list(default_names)
+        js.position = pos
         self.pub_joint_cmd.publish(js)
 
     # ---------- 观测 ----------
@@ -709,15 +798,27 @@ class InferenceManager(BaseManager):
             raise RuntimeError(f"_build_obs failed: {e}")
 
     # ---------- 小工具 ----------
-    def _fit_action_dim(self, a: np.ndarray) -> np.ndarray:
-        dof = len(self.cmd_joint_names)
-        a = np.asarray(a, dtype=np.float32).reshape(-1)
-        if a.shape[0] == dof:
-            return a
-        out = np.zeros((dof,), dtype=np.float32)
-        n = min(dof, a.shape[0])
-        out[:n] = a[:n]
-        return out
+    def _fit_action_dim(self, a: np.ndarray, source: str = "action") -> np.ndarray:
+        out = np.asarray(a, dtype=np.float32).reshape(-1)
+        required_dim = self.expected_action_dim * (2 if self.use_oculus_cmd_msg else 1)
+        if out.shape[0] >= required_dim:
+            return out
+
+        msg = (
+            f"Action dimension mismatch at {source}: "
+            f"got {out.shape[0]}, expected at least {required_dim}. Abort."
+        )
+        try:
+            self.get_logger().error(msg)
+        except Exception:
+            pass
+        self._stop_evt.set()
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
+        raise ValueError(msg)
 
     @staticmethod
     def _pad_or_clip(arr: np.ndarray, H: int) -> np.ndarray:
@@ -797,9 +898,10 @@ def main(args=None):
     rclpy.init(args=args)
     node = InferenceManager()
     try:
-        executor = MultiThreadedExecutor(num_threads=os.cpu_count() or 4)
-        executor.add_node(node)
-        executor.spin()
+        # executor = MultiThreadedExecutor(num_threads=os.cpu_count() or 4)
+        # executor.add_node(node)
+        # executor.spin()
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
