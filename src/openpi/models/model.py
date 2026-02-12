@@ -226,6 +226,8 @@ class BaseModelConfig(abc.ABC):
     action_horizon: int
     # Tokenized prompt maximum length.
     max_token_len: int
+    # State dim
+    state_dim: int
 
     @property
     @abc.abstractmethod
@@ -274,6 +276,7 @@ class BaseModel(nnx.Module, abc.ABC):
     action_dim: int
     action_horizon: int
     max_token_len: int
+    state_dim: int
 
     @abc.abstractmethod
     def compute_loss(

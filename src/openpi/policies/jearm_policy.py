@@ -169,6 +169,7 @@ class JeArmInputs(transforms.DataTransformFn):
     """
 
     action_dim: int
+    state_dim: int = 8
     adapt_to_pi: bool = True
     # ← 新增：是否处理相机图像。False 时不访问 data["images"]，也不调用 _decode_aloha。
     use_images: bool = True
@@ -179,7 +180,7 @@ class JeArmInputs(transforms.DataTransformFn):
 
     def __call__(self, data: dict) -> dict:
         # 仅在需要图像时才调用 _decode_aloha（其内部会访问 data["images"]）
-        data = _decode_aloha(data, adapt_to_pi=self.adapt_to_pi, use_images=self.use_images)
+        data = _decode_aloha(data, adapt_to_pi=self.adapt_to_pi, use_images=self.use_images, state_dim=self.state_dim)
 
         # ---- state ----
         state = transforms.pad_to_dim(data["state"], self.action_dim)
@@ -289,12 +290,12 @@ class JeArmOutputs(transforms.DataTransformFn):
     def __call__(self, data: dict) -> dict:
         # Only return the first 14 dims.
         actions = np.asarray(data["actions"][:, :16])
-        return {"actions": _encode_actions(actions, adapt_to_pi=self.adapt_to_pi)}
+        return {"actions": _encode_actions(actions, adapt_to_pi=self.adapt_to_pi, state_dim=8)}
 
 
-def _joint_flip_mask() -> np.ndarray:
+def _joint_flip_mask(state_dim) -> np.ndarray:
     """Used to convert between aloha and pi joint angles."""
-    return np.array([1, -1, -1, 1, 1, 1, 1, 1])
+    return np.ones((1, state_dim))
 
 
 def _normalize(x, min_val, max_val):
@@ -352,10 +353,14 @@ def _decode_aloha(
         *,
         adapt_to_pi: bool = False,
         use_images: bool = True,  # ← 新增开关
+        state_dim: int = 8,  # ← 新增：state 的预期维度（如果输入更大会被截断）
 ) -> dict:
     # --- state 始终解码 ---
-    state = np.asarray(data["state"][:7])
-    state = _decode_state(state, adapt_to_pi=adapt_to_pi)
+    state = np.asarray(data["state"])
+    # 先截断到预期维度，避免后续处理时维度不匹配（按最后一维截断）
+    if state.shape[-1] > state_dim:
+        state = state[..., :state_dim]
+    state = _decode_state(state, adapt_to_pi=adapt_to_pi, state_dim=state_dim)
     data["state"] = state
 
     # --- 图像可选 ---
@@ -383,14 +388,19 @@ def _decode_aloha(
     return data
 
 
-def _decode_state(state: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
+def _decode_state(state: np.ndarray, *, adapt_to_pi: bool = False, state_dim: int) -> np.ndarray:
     # 支持 8 或 16 维输入
     if adapt_to_pi:
         # 只处理前8维
-        state_main = state[:8]
-        state_rest = state[8:] if state.shape[0] > 8 else None
-        state_main = _joint_flip_mask() * state_main
-        state_main[[7]] = _gripper_to_angular(state_main[[7]])
+        state_main = state[..., :state_dim]
+        state_rest = state[..., state_dim:] if state.shape[-1] > state_dim else None
+        mask = _joint_flip_mask(state_dim)
+        if state_main.ndim == 1:
+            state_main = state_main * mask.reshape(-1)
+        else:
+            state_main = state_main * mask
+        idx = state_dim - 1
+        state_main[..., idx] = _gripper_to_angular(state_main[..., idx])
         if state_rest is not None:
             state = np.concatenate([state_main, state_rest], axis=-1)
         else:
@@ -401,13 +411,15 @@ def _decode_state(state: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray
 def _encode_actions(actions: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
     if adapt_to_pi:
         # Flip the joints.
-        actions = _joint_flip_mask() * actions
-        actions[:, [7]] = _gripper_from_angular(actions[:, [7]])
+        default_state_dim = actions.shape[-1]
+        actions = _joint_flip_mask(default_state_dim) * actions
+        actions[:, [default_state_dim - 1]] = _gripper_from_angular(actions[:, [default_state_dim - 1]])
     return actions
 
 
 def _encode_actions_inv(actions: np.ndarray, *, adapt_to_pi: bool = False) -> np.ndarray:
     if adapt_to_pi:
-        actions = _joint_flip_mask() * actions
-        actions[:, [7]] = _gripper_from_angular_inv(actions[:, [7]])
+        default_state_dim = actions.shape[-1]
+        actions = _joint_flip_mask(default_state_dim) * actions
+        actions[:, [default_state_dim - 1]] = _gripper_from_angular_inv(actions[:, [default_state_dim - 1]])
     return actions

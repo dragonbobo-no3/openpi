@@ -357,3 +357,5 @@ export FASTRTPS_DEFAULT_PROFILES_FILE=~/fastdds_shm_only.xml
 env -u PYTHONPATH PYTHONPATH="$NEW_PYTHONPATH" uv run ./scripts/inference_manager_ros2_test.py
 
 source ~/ros2_ws/install/setup.bash
+
+NCCL_NVLS_ENABLE=0 uv run scripts/train.py pi05_jearm_new_form --exp-name=/jedata/jemotor/model/0212_pi05_test --data.repo_id=lerobot/test --no_wandb_enabled --overwrite

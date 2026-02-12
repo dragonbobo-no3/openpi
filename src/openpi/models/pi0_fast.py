@@ -82,6 +82,7 @@ class Pi0FASTConfig(_model.BaseModelConfig):
     action_dim: int = 32
     action_horizon: int = 32
     max_token_len: int = 250
+    state_dim: int = 32
 
     # Tokenizer for the fast model.
     fast_model_tokenizer: Any | None = None

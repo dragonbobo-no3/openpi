@@ -332,6 +332,8 @@ class LeRobotJeArmDataConfig(DataConfigFactory):
 
     load_images: bool = True
 
+    use_depth: bool = False
+
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
         default=_transforms.Group(
@@ -362,7 +364,7 @@ class LeRobotJeArmDataConfig(DataConfigFactory):
     @override
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig, use_images = load_images) -> DataConfig:
         data_transforms = _transforms.Group(
-            inputs=[jearm_policy.JeArmInputs(action_dim=model_config.action_dim, adapt_to_pi=self.adapt_to_pi,
+            inputs=[jearm_policy.JeArmInputs(action_dim=model_config.action_dim, state_dim=model_config.state_dim, adapt_to_pi=self.adapt_to_pi,
                                                use_images=use_images)],
             outputs=[jearm_policy.JeArmOutputs(adapt_to_pi=self.adapt_to_pi)],
         )
@@ -382,7 +384,7 @@ class LeRobotJeArmDataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
             repo_id="lerobot/test",
-            root="/jedata/test_0207",
+            root="/jedata/test_0207_gripper",
         )
     
 @dataclasses.dataclass(frozen=True)
@@ -873,18 +875,20 @@ _CONFIGS = [
         model=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
                                    action_expert_variant="gemma_300m",
                                    action_dim=8,
+                                   state_dim=8,
                                    action_horizon=50,
                                    max_token_len=128,
                                    pi05=True),
         freeze_filter=pi0_config.Pi0Config(paligemma_variant="gemma_2b",
                                            action_expert_variant="gemma_300m",
                                            action_dim=8,
+                                           state_dim=8,
                                            action_horizon=50,
                                            max_token_len=128,
                                            pi05=True).get_freeze_filter(),
         weight_loader=weight_loaders.CheckpointWeightLoader("/jedata/pi0_base/pi05_base/params"),
-        data=LeRobotAgileXDataConfigNewForm(
-            assets=AssetsConfig(assets_dir="/jedata/test_1105"),
+        data=LeRobotJeArmDataConfig(
+            assets=AssetsConfig(assets_dir="/jedata/test_0207_gripper"),
             default_prompt="Pick up the PCB board from the green conveyor belt and place it into the yellow container."
         ),
         policy_metadata={"reset_pose": [0, -1.5, 1.5, 0, 0, 0, 0, 0]},
