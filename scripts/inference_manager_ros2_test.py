@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+from common_utils.ros2_qos import reliable_qos
 
 COMMON_UTILS_ROOT = "~/ros2_ws/src/common"
 if COMMON_UTILS_ROOT not in sys.path:
@@ -346,12 +346,6 @@ class InferenceManager(BaseManager):
             )
 
         # ---------- 发布者 ----------
-        reliable_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10,
-        )
         if self.use_oculus_cmd_msg:
             self.pub_joint_cmd = self.create_publisher(OculusInitJointState, self.cmd_joint_topic, reliable_qos)
             self.get_logger().info(
@@ -793,7 +787,7 @@ class InferenceManager(BaseManager):
     # ---------- 观测 ----------
     def _build_obs(self, picks):
         try:
-            return transform_ros2msg_2_np(picks, self._idx_joint, self._idx_color, self._idx_depth, False)
+            return transform_ros2msg_2_np(picks, self._idx_joint_state, self._idx_color, self._idx_depth, False)
         except Exception as e:
             raise RuntimeError(f"_build_obs failed: {e}")
 
