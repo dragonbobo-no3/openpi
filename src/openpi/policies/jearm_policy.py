@@ -290,7 +290,7 @@ class JeArmOutputs(transforms.DataTransformFn):
     def __call__(self, data: dict) -> dict:
         # Only return the first 14 dims.
         actions = np.asarray(data["actions"][:, :16])
-        return {"actions": _encode_actions(actions, adapt_to_pi=self.adapt_to_pi, state_dim=8)}
+        return {"actions": _encode_actions(actions, adapt_to_pi=self.adapt_to_pi)}
 
 
 def _joint_flip_mask(state_dim) -> np.ndarray:
